@@ -1516,11 +1516,11 @@ class ThreadLocalUserProviderTest {
     @Test
     void isolatedAcrossThreads() throws InterruptedException {
         ThreadLocalUserProvider.set(new CurrentUser("u-1", "alice"));
-        AtomicReference<Exception> failure = new AtomicReference<>();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
         Thread other = new Thread(() -> {
             try {
                 assertThat(new ThreadLocalUserProvider().currentUser()).isEmpty();
-            } catch (Exception e) {
+            } catch (Throwable e) {   // 必须 Throwable：AssertionError extends Error，catch Exception 会让测试恒真
                 failure.set(e);
             }
         });
