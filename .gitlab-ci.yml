@@ -3,7 +3,7 @@ stages: [verify]
 verify:
   stage: verify
   # 若该 tag 在你的 GitLab Runner 上不存在：换 eclipse-temurin:25，Maven 由 wrapper 自带下载
-  image: maven:3.9.9-eclipse-temurin-25
+  image: maven:3.9.11-eclipse-temurin-25
   variables:
     MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
   cache:

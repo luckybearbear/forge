@@ -14,5 +14,5 @@
 
 跨模块协作方式：
 - 同步查询：消费方依赖契约模块（如 forge-contract-mold 的 MoldQueryService），实现方在模块暴露面提供 Bean
-- 异步通知：发布方发布契约事件（如 MoldRepairRequested），消费方 @ApplicationModuleListener 监听
+- 异步通知：发布方发布契约事件（如 MoldRepairRequested），消费方 @ApplicationModuleListener 监听（目标规范注解；当前 Demo 因 Modulith 无持久化 registry 降级为同步 @EventListener，Phase 2 随 PostgreSQL 恢复）
 - 禁止：直接访问其他模块的内部包/内部表
