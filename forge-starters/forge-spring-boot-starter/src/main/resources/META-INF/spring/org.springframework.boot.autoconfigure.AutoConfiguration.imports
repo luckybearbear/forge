@@ -1,0 +1,2 @@
+io.github.luckybearbear.forge.starter.web.ForgeWebAutoConfiguration
+io.github.luckybearbear.forge.starter.openapi.ForgeOpenApiAutoConfiguration
