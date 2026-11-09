@@ -1,0 +1,17 @@
+# Phase 1 可选基础设施栈（Demo 不依赖）：docker compose --profile infra up -d
+services:
+  postgres:
+    image: postgres:18-alpine
+    profiles: [infra]
+    environment:
+      POSTGRES_DB: forge
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: forge
+    ports: ["5432:5432"]
+    volumes: [forge-pgdata:/var/lib/postgresql/data]
+  redis:
+    image: redis:8-alpine
+    profiles: [infra]
+    ports: ["6379:6379"]
+volumes:
+  forge-pgdata: {}
