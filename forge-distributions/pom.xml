@@ -11,4 +11,8 @@
   <artifactId>forge-distributions</artifactId>
   <packaging>pom</packaging>
   <name>Forge :: Distributions</name>
+
+  <modules>
+    <module>forge-demo-app</module>
+  </modules>
 </project>
