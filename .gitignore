@@ -1,0 +1,25 @@
+# Build outputs
+target/
+build/
+out/
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Local-only Maven settings (mirror override, not for the repo)
+.mvn/local-settings.xml
+
+# Never ignore the Maven Wrapper
+!.mvn/wrapper/maven-wrapper.properties
