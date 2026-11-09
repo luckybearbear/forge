@@ -74,7 +74,7 @@ mvn -version    # 预期 Apache Maven 3.9.9 输出正常（用系统 JDK 17 跑�
 - Create: `forge-services/pom.xml`、`forge-apps/pom.xml`（空聚合 + README）
 - Create: `forge-starters/pom.xml`、`forge-distributions/pom.xml`
 - Create: `forge-template/README.md`
-- Create: 各占位模块 `README.md`、`src/main/java/.../package-info.java`
+- Create: 各占位模块 `README.md`；cache/messaging/audit/storage 四个占位模块的 SPI 接口（`CacheFacade`、`MessagePublisher`、`AuditEntry` + `AuditRecorder`、`StorageClient`，spec §4 要求）
 - Create: `mvnw`、`mvnw.cmd`、`.mvn/wrapper/maven-wrapper.properties`（由 mvn wrapper:wrapper 生成）
 - Modify: `.gitignore`（追加 `.flattened-pom.xml`）
 
@@ -618,6 +618,79 @@ JAVA_HOME="$FORGE_JDK" ./mvnw -version    # 预期下载 apache-maven-3.9.9 后�
 ```
 
 其余占位 README 同构（替换职责一句话：messaging=消息发布/消费抽象（Phase 3）；audit=操作审计 SPI（Phase 2）；storage=文件存储抽象（Phase 3）；observability=MDC 常量与日志规范（本阶段实现常量类，见 Task 5）；services=业务共享能力聚合（Phase 2 起逐个落模块）；apps=具体业务应用聚合（Phase 2+ 起）；forge-template=新项目模板（Phase 5））。
+
+四个占位模块的 SPI 接口（spec §4：SPI 接口 + README 占位）：
+
+`forge-platform/forge-platform-cache/src/main/java/io/github/luckybearbear/forge/platform/cache/CacheFacade.java`：
+
+```java
+package io.github.luckybearbear.forge.platform.cache;
+
+import java.time.Duration;
+import java.util.Optional;
+
+/** 缓存抽象 SPI。Phase 2 提供 Redis 实现与 forge-cache-starter。 */
+public interface CacheFacade {
+
+    void put(String key, Object value, Duration ttl);
+
+    Optional<Object> get(String key);
+
+    void evict(String key);
+}
+```
+
+`forge-platform/forge-platform-messaging/src/main/java/io/github/luckybearbear/forge/platform/messaging/MessagePublisher.java`：
+
+```java
+package io.github.luckybearbear.forge.platform.messaging;
+
+/** 消息发布抽象 SPI。Phase 3 按需提供实现；模块内默认事件通道是 Spring Modulith 事件。 */
+public interface MessagePublisher {
+
+    void publish(String topic, Object payload);
+}
+```
+
+`forge-platform/forge-platform-audit/src/main/java/io/github/luckybearbear/forge/platform/audit/AuditEntry.java`：
+
+```java
+package io.github.luckybearbear.forge.platform.audit;
+
+import java.time.Instant;
+
+/** 操作审计条目（操作人/动作/对象/时间）。 */
+public record AuditEntry(String actor, String action, String targetType, String targetId, Instant at) {}
+```
+
+`forge-platform/forge-platform-audit/src/main/java/io/github/luckybearbear/forge/platform/audit/AuditRecorder.java`：
+
+```java
+package io.github.luckybearbear.forge.platform.audit;
+
+/** 审计记录 SPI。Phase 2 接操作日志落库（经 Modulith 事件异步化）。 */
+public interface AuditRecorder {
+
+    void record(AuditEntry entry);
+}
+```
+
+`forge-platform/forge-platform-storage/src/main/java/io/github/luckybearbear/forge/platform/storage/StorageClient.java`：
+
+```java
+package io.github.luckybearbear.forge.platform.storage;
+
+import java.io.InputStream;
+
+/** 文件存储抽象 SPI。Phase 3 提供本地/对象存储实现与文件中心。 */
+public interface StorageClient {
+
+    /** 返回存储 key。 */
+    String store(InputStream content, String filename, String contentType);
+
+    InputStream read(String key);
+}
+```
 
 `forge-template/README.md`：
 
