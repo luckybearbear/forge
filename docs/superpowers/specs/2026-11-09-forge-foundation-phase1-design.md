@@ -56,7 +56,7 @@ Phase 1 目标：**一个可独立运行、独立测试、独立发布的 Maven 
 | 项 | 决策 | 说明 |
 |---|---|---|
 | groupId | `io.github.luckybearbear` | |
-| 项目版本 | `1.0.0-SNAPSHOT` | 首次正式发布时升级 `1.0.0` |
+| 项目版本 | `${revision}`（默认 `1.0.0-SNAPSHOT`）+ flatten-maven-plugin | CI 友好的多模块统一版本（借鉴 yudao-dependencies 做法）；正式发布时设 revision=1.0.0 |
 | Java | release **25** | 本机安装 Temurin 25（zip 解压至 `D:\devloper\soft\`），构建时显式指向，**不修改系统 `JAVA_HOME`**。Enforcer 强制 `[25,)` |
 | Spring Boot | **4.1.2** | 当前最新稳定 GA；Jackson 3 / Framework 7 / Servlet 6.1 时代，编码注意新包名（见 §10） |
 | Spring Modulith | **2.1.2** | 配套 Boot 4.1 |
@@ -152,6 +152,7 @@ public record PageQuery(int page, int size) {        // page 1 起始；size 默
 
 - 成功码为字符串常量 `"OK"`；不使用数字码。
 - `traceId` 字段**暂不加入**响应体（观察性关联走 MDC/日志，Phase 4 随链路追踪再评估）。
+- **不引入 Lombok**：核心类型用 record，日志用显式 `LoggerFactory`——规避注解处理器排序与 Boot 4 兼容负担（如团队强烈偏好 `@Slf4j`，后续可加回并同步维护 `lombok.config`）。
 
 ### 6.2 错误码与异常体系（platform-core）
 
@@ -168,7 +169,9 @@ public class BusinessException extends RuntimeException {
 
 - **业务错误码是字符串分段码**，与 HTTP 状态码解耦；HTTP 状态仅作传输层提示（异常可携带，默认 200）。
 - 分段规范 v0：`FORGE-` 为平台保留段；业务域前缀由底座统一分配（示例：`MOLD-`、`MAINT-`）；4 位数字建议语义：`0xxx` 参数/通用、`4xxx` 资源不存在/冲突、`9xxx` 系统级。
-- 平台预置错误码（`ErrorCodes` 常量类）：`FORGE-0400`（校验失败）、`FORGE-0401/0403`（预留）、`FORGE-0404`（资源不存在）、`FORGE-0500`（系统内部错误）。
+- 平台预置错误码（`ErrorCodes` 常量类，覆盖面借鉴 yudao `GlobalErrorCodeConstants`）：`FORGE-0400` 校验失败、`FORGE-0401` 未认证（预留）、`FORGE-0403` 无权限（预留）、`FORGE-0404` 资源不存在、`FORGE-0405` 方法不支持、`FORGE-0415` 媒体类型不支持、`FORGE-0423` 并发冲突（预留）、`FORGE-0429` 请求过频（限流预留）、`FORGE-0500` 系统内部错误、`FORGE-0501` 功能未实现/未开启。
+- `BusinessException` 消息支持 `{}` 占位格式化（借鉴 `ServiceExceptionUtil`），参数错位降级为告警不抛错。
+- 业务域错误码常量类**随契约模块发布**（如 `MoldErrorCodes` 放 `forge-contract-mold`，借鉴 yudao 将 `ErrorCodeConstants` 放 `-api` 模块的做法）；前缀集中登记于 `docs/standards/error-codes.md`（与附录 A 同步维护）。
 
 ### 6.3 上下文抽象（platform-security）
 
@@ -184,10 +187,14 @@ public class BusinessException extends RuntimeException {
 
 ### 6.5 platform-web
 
-- `GlobalExceptionHandler`（`@RestControllerAdvice`）：
-  - `BusinessException` → 携带的 HTTP 状态（默认 200）+ `Result(code, message)`
-  - `MethodArgumentNotValidException` / `ConstraintViolationException` → 400 + `FORGE-0400`，`data` 为 `Map<String,String>`（字段 → 错误信息）
-  - 未知异常 → 500 + `FORGE-0500`（日志 error，不向客户端泄漏堆栈）
+- `GlobalExceptionHandler`（`@RestControllerAdvice` + `@Order(0)` 抢占三方 advice；异常覆盖面借鉴 yudao，适配 Boot 4/jakarta 实际类型）：
+  - `BusinessException` → 携带的 HTTP 状态（默认 200）+ `Result(code, message)`；防御分支：业务码为成功码时改判 `FORGE-0500`（借鉴 yudao Issue #1196）；业务异常日志 warn 且不打堆栈
+  - `MethodArgumentNotValidException` / `BindException` / `ConstraintViolationException` / `ValidationException` → 400 + `FORGE-0400`，`data` 为 `Map<String,String>`（字段 → 错误信息）
+  - `MissingServletRequestParameterException` / `MethodArgumentTypeMismatchException` / `HttpMessageNotReadableException` / `HttpMediaTypeNotSupportedException` / `MaxUploadSizeExceededException` → 400 + 对应 `FORGE-04xx`
+  - 资源不存在（`NoHandlerFoundException` / Framework 7 对应类型）→ 404 + `FORGE-0404`
+  - `HttpRequestMethodNotSupportedException` → 405 + `FORGE-0405`
+  - 兜底 `Exception` → 500 + `FORGE-0500`（日志 error，不向客户端泄漏堆栈；Phase 2 增加错误日志落库，采用 Modulith 事件而非 yudao 的直接依赖 infra API）
+  - 与 yudao 的关键差异：**HTTP 状态保留语义**（yudao 一律 200；本底座按异常类别返回 4xx/5xx，业务语义在 `code`）
 - Jackson 基线（Boot 4 = Jackson 3，`tools.jackson` 包名，实施时以实际依赖树为准）：时间统一 `Instant`，ISO-8601 输出，日期不写时间戳。
 - 所有 advice/配置 bean 提供 `@ConditionalOnMissingBean` 覆盖点。
 
@@ -195,6 +202,7 @@ public class BusinessException extends RuntimeException {
 
 - 传递依赖：`spring-boot-starter-webmvc`（Boot 4 的 MVC starter artifactId 以 Maven Central 实查为准）+ `spring-boot-starter-actuator`（默认仅暴露 health/info）+ platform-core/web/observability。
 - 自动配置：`ForgeWebAutoConfiguration` 装配全局异常处理与 Jackson 基线，注册文件 `META-INF/spring/…AutoConfiguration.imports`。
+- 集成 springdoc-openapi（取 Boot 4 兼容版本线，实施时实查）：基础 `OpenAPI` Bean（标题/版本），api-docs 默认生产禁用；分组、公共 header 参数注入等增强留待 Phase 2（借鉴 yudao Swagger 配置模式）。
 - 后续阶段新增 starter 命名规范：`forge-<feature>-starter`。
 
 ### 6.7 ID 生成（platform-core）
@@ -206,6 +214,11 @@ public class BusinessException extends RuntimeException {
 
 - `logback-spring.xml` 基线放在 starter 资源内：控制台 pattern 含 MDC traceId 占位；`prod` profile 切结构化日志（Boot 4 structured logging，实施时验证配置键）。
 - platform-observability 模块：MDC key 常量 + 日志规范文档引用。Micrometer/Prometheus/OTel 仅预留接入说明（Phase 4）。
+
+### 6.9 Filter 顺序常量（platform-web）
+
+- `FilterOrder` 常量类统一预留全底座 Filter 顺序段（借鉴 yudao `WebFilterOrderEnum`）：CORS 最前 → 请求体包装 → 租户（Phase 2）→ 安全（Phase 2）→ 访问日志（Phase 2）→ 业务自定义段。
+- Phase 1 实际 Filter 很少，但顺序段先占位，避免后续各 starter 各自为政。
 
 ## 7. Demo 应用设计（forge-distributions/forge-demo-app）
 
@@ -227,7 +240,7 @@ io.github.luckybearbear.forge.demo          # @SpringBootApplication（Modulith 
 - 依赖：`forge-spring-boot-starter` + `forge-contract-mold` + `spring-modulith-starter-core`；测试：`spring-boot-starter-test` + `spring-modulith-starter-test` + Awaitility。
 - 行为流：登记模具 → 报修发布 `MoldRepairRequested` → maintenance `@ApplicationModuleListener`（异步）生成维修单 → 查询维修单。
 - **maintenance 只依赖契约 jar，禁止 import `demo.mold` 内部包**——`ApplicationModules.of(ForgeDemoApplication.class).verify()` 单测强制。
-- 错误演示：查询不存在模具 → `MOLD-0404`（HTTP 404 + Result）。
+- 错误演示：查询不存在模具 → `MOLD-0404`（HTTP 404 + Result），错误码常量定义于契约模块 `MoldErrorCodes`（见 §6.2）。
 - 内存存储（`ConcurrentHashMap`），零 DB 依赖。
 
 ## 8. 构建与本地环境
@@ -248,6 +261,8 @@ io.github.luckybearbear.forge.demo          # @SpringBootApplication（Modulith 
 | starter | 最小 `@SpringBootTest`（测试源内建小应用）验证自动装配生效 |
 | demo-app | MockMvc 全链路集成测试：建模具 → 查询 → 报修 → Awaitility 等待异步维修单 → 404 用例；Modulith `verify()` 测试 |
 
+- platform-test 吸收 yudao 的「`@SpringBootTest(NONE)` + `@Import` 精简配置」轻量切片模式；DB/Redis 集成测试坚持 Testcontainers 真实 PostgreSQL（**不采纳** yudao 的 H2 / jedis-mock 方案，避免与生产行为漂移）。
+
 **验收标准（Phase 1 Done）**：
 
 1. JDK 25 环境下 `./mvnw verify` 根仓库全绿（含 Modulith 边界测试）。
@@ -267,10 +282,11 @@ io.github.luckybearbear.forge.demo          # @SpringBootApplication（Modulith 
 | GitLab CI 镜像 tag `maven:3.9-eclipse-temurin-25` 可用性 | 回退方案已定义（§8） |
 | 本机 Maven 损坏（classworlds 混装） | 不依赖本机 mvn（用 wrapper）；是否顺手删除旧 jar 修复，实施时与用户确认 |
 | Temurin 25 下载体积（约 200MB） | 网络已验证可达 Adoptium API |
+| 借鉴源差异：本地 yudao-cloud 为 **jdk8 分支**（Boot 2.7 / javax / Jackson 2） | 只借鉴模式不搬代码；涉及点（异常处理器清单、Jackson 定制、autoconfig 注册）均需换算到 Boot 4 / jakarta / Jackson 3 语义 |
 
 ## 11. 后续阶段路线（非本次范围，仅存档）
 
-- **Phase 2 企业基础能力**：identity/organization/authorization/tenant 服务、Spring Security 认证、Flyway 实装、PostgreSQL + Testcontainers、数据审计。
+- **Phase 2 企业基础能力**：identity/organization/authorization/tenant 服务、Spring Security 认证、Flyway 实装、PostgreSQL + Testcontainers、数据审计。多租户备忘（借鉴 yudao biz-tenant）：上下文用 TransmittableThreadLocal 或 JDK 25 ScopedValue 评估；Web filter 解析 header、SQL 改写、Redis key 前缀、MQ 消息头四入口统一隔离；`@TenantIgnore` + ignore 配置作逃生口。另评估：Long→String Jackson 序列化（防 JS 精度丢失）、请求体可重复读 Filter、admin-api/app-api 包前缀路由（WebMvcRegistrations 模式）、幂等/限流/分布式锁（yudao protection 模式）、访问/错误日志落库（Modulith 事件实现）。
 - **Phase 3 通用业务能力**：文件中心、字典、编码规则、消息通知、简单审批。
 - **Phase 4 工程化**：Modulith 文档化、JaCoCo、格式化门禁、CI/CD 完善（含离线/内部制品库）、镜像发布。
 - **Phase 5 模板化**：forge-template、按需装配、示例业务模块、完整开发规范。
