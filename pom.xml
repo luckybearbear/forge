@@ -79,6 +79,11 @@
           <groupId>org.springframework.boot</groupId>
           <artifactId>spring-boot-maven-plugin</artifactId>
           <version>${spring-boot.version}</version>
+          <!-- 非 runnable 模块跳过 CLI spring-boot:run（否则 "Unable to find a suitable main class"）；
+               可运行应用（distributions 下）必须在自身插件声明中覆盖 <skip>false</skip> -->
+          <configuration>
+            <skip>true</skip>
+          </configuration>
         </plugin>
       </plugins>
     </pluginManagement>
