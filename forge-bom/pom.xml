@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <!-- 独立 BOM（不继承 forge-parent）：forge-parent 的 dependencyManagement 导入 forge-bom，
+       若 forge-bom 再继承 forge-parent 会形成 import 循环（Maven 3.9 "form a cycle" 模型错误）。
+       与 spring-boot-dependencies 的做法一致：BOM 独立声明所需属性。 -->
+  <groupId>io.github.luckybearbear</groupId>
+  <artifactId>forge-bom</artifactId>
+  <version>${revision}</version>
+  <packaging>pom</packaging>
+  <name>Forge :: BOM</name>
+
+  <properties>
+    <revision>1.0.0-SNAPSHOT</revision>
+    <spring-boot.version>4.1.2</spring-boot.version>
+    <spring-modulith.version>2.1.2</spring-modulith.version>
+    <springdoc.version>3.2.0</springdoc.version>
+    <flatten-maven-plugin.version>1.7.1</flatten-maven-plugin.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.springframework.modulith</groupId>
+        <artifactId>spring-modulith-bom</artifactId>
+        <version>${spring-modulith.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.springdoc</groupId>
+        <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+        <version>${springdoc.version}</version>
+      </dependency>
+
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-core</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-web</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-security</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-data</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-cache</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-messaging</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-observability</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-audit</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-storage</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-test</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-mold</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-spring-boot-starter</artifactId><version>${revision}</version></dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build><plugins>
+    <plugin>
+      <groupId>org.codehaus.mojo</groupId>
+      <artifactId>flatten-maven-plugin</artifactId>
+      <version>${flatten-maven-plugin.version}</version>
+      <configuration><flattenMode>bom</flattenMode></configuration>
+    </plugin>
+  </plugins></build>
+</project>

@@ -23,3 +23,6 @@ Thumbs.db
 
 # Never ignore the Maven Wrapper
 !.mvn/wrapper/maven-wrapper.properties
+
+# flatten-maven-plugin output
+.flattened-pom.xml
