@@ -119,7 +119,7 @@ forge-distributions/forge-demo-app/
 
 四入口统一隔离：
 
-1. **Web**：`TenantContextFilter`（`FilterOrder.TENANT_FILTER=-120`，在 Security 之后）从认证结果恢复租户；`app-api/**` 请求无有效租户 → 401/400；finally 中 `clear()`（含 TTL）。
+1. **Web**：`TokenAuthFilter`（`FilterOrder.SECURITY_FILTER=-100`）认证同时填充租户上下文并在 finally 清理（修订：原 TenantContextFilter(-120) 先于认证运行却依赖认证结果，存在顺序矛盾，职责并入认证过滤器）；`FilterOrder.TENANT_FILTER=-120` 段保留给未来 header 直传租户场景。`app-api/**` 请求无有效租户 → 401/400。
 2. **DB**：`CurrentTenantIdentifierResolver`（实现于 platform-data，读 TenantContextHolder）注册为 `HibernatePropertiesCustomizer`；`@TenantId` 实体自动过滤。**未标注 `@TenantId` 的实体 = 全局表**（天然表级逃生口，等价 yudao ignore-tables）。
 3. **Redis**：`TenantRedisCacheManager`（@Primary，事务感知可选）为 cache key 拼 `t:{tenantId}:` 前缀；`CacheFacade` 同规则。
 4. **事件**：**不依赖隐式上下文传播**——跨模块事件 payload 必须携带 `tenantId` 字段，监听器入口显式 `set`/`finally clear`。理由：可调试、不依赖 TTL agent/executor 包装（Modulith 异步监听用非池化线程时 TTL 不保证）。
