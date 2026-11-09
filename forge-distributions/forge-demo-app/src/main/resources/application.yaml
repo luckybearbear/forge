@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: forge-demo-app
+server:
+  port: 8080
+forge:
+  openapi:
+    title: Forge Demo API
+    description: 模块化单体演示：mold + maintenance（契约 + 事件 + 边界）
+    version: 1.0.0-SNAPSHOT

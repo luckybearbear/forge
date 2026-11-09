@@ -30,6 +30,8 @@
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-events-api</artifactId>
     </dependency>
+    <!-- 注：events-core（@ApplicationModuleListener 投递基础设施）需要 EventPublicationRegistry 持久化存储
+         （JPA/JDBC/Mongo），Phase 2 随 PostgreSQL 引入；当前 listener 用同步 @EventListener（见 brief Step 3 降级）。 -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
