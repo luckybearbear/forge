@@ -26,6 +26,12 @@ public record Result<T>(String code, String message, T data) {
         return new Result<>(errorCode.code(), message, null);
     }
 
+    /** 校验失败等需要携带结构化 data 的错误。 */
+    public static <T> Result<T> error(ErrorCode errorCode, String message, T data) {
+        requireError(errorCode);
+        return new Result<>(errorCode.code(), message, data);
+    }
+
     private static void requireError(ErrorCode errorCode) {
         if (errorCode == null) {
             throw new IllegalArgumentException("errorCode must not be null");

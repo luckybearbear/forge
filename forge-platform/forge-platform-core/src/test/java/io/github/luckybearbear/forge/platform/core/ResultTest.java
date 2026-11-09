@@ -1,5 +1,7 @@
 package io.github.luckybearbear.forge.platform.core;
 
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -25,6 +27,15 @@ class ResultTest {
         assertThat(result.code()).isEqualTo("FORGE-0404");
         assertThat(result.message()).isEqualTo("找不到模具: m-1");
         assertThat(result.data()).isNull();
+    }
+
+    @Test
+    void errorWithMessageAndDataCarriesData() {
+        Result<Map<String, String>> result =
+                Result.error(ErrorCodes.PLATFORM_BAD_REQUEST, "m", Map.of("a", "b"));
+        assertThat(result.code()).isEqualTo("FORGE-0400");
+        assertThat(result.message()).isEqualTo("m");
+        assertThat(result.data()).isEqualTo(Map.of("a", "b"));
     }
 
     @Test
