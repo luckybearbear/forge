@@ -145,7 +145,7 @@ public record Result<T>(String code, String message, T data) {
 
 public record PageResult<T>(List<T> items, long total, int page, int size);
 
-public record PageQuery(int page, int size) {        // page 1 起始；size 默认 20、上限 200（Jakarta Validation 注解）
+public record PageQuery(int page, int size) {        // page 1 起始；size 经紧凑构造器钳制在 [1, 200]，默认 20（超限静默归一，非 400 拒绝）
     public int offset();
 }
 ```

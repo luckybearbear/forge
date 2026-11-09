@@ -3,7 +3,7 @@
 可运行 Demo：mold + maintenance 双业务模块，演示契约同步查询（MoldQueryService）+ 领域事件
 （MoldRepairRequested）+ Modulith 边界强制。内存存储、零 DB 依赖。
 
-运行：`JAVA_HOME=<jdk25> ./mvnw -pl forge-distributions/forge-demo-app spring-boot:run`
+运行：`JAVA_HOME=<jdk25> ./mvnw -pl forge-distributions/forge-demo-app -am spring-boot:run`
 
 体验流：POST /api/molds → GET /api/molds/{id} → POST /api/molds/{id}/repairs →
 GET /api/maintenances?moldId={id}；API 文档 /swagger-ui/index.html；健康 /actuator/health。

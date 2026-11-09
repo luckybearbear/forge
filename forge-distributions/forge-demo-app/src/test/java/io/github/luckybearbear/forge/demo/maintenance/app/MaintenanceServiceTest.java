@@ -4,6 +4,7 @@ import io.github.luckybearbear.forge.contract.mold.MoldDTO;
 import io.github.luckybearbear.forge.contract.mold.MoldQueryService;
 import io.github.luckybearbear.forge.contract.mold.MoldStatus;
 import io.github.luckybearbear.forge.demo.maintenance.domain.MaintenanceRegistry;
+import io.github.luckybearbear.forge.platform.core.BusinessException;
 import io.github.luckybearbear.forge.platform.core.IdGenerator;
 import io.github.luckybearbear.forge.platform.core.UuidV7Generator;
 import java.time.Instant;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MaintenanceServiceTest {
 
@@ -40,5 +42,16 @@ class MaintenanceServiceTest {
         service.createFromEvent("m-2", "c", Instant.now());
         assertThat(service.findByMoldId("m-1")).hasSize(2);
         assertThat(service.findByMoldId("m-2")).hasSize(1);
+    }
+
+    @Test
+    void findByIdThrowsMaintNotFoundWith404() {
+        assertThatThrownBy(() -> service.findById("missing"))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> {
+                            assertThat(ex.errorCode()).isEqualTo(MaintenanceErrorCodes.MAINT_NOT_FOUND);
+                            assertThat(ex.errorCode().code()).isEqualTo("MAINT-0404");
+                            assertThat(ex.httpStatus()).isEqualTo(404);
+                        });
     }
 }

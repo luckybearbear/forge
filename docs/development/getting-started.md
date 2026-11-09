@@ -16,7 +16,7 @@ export JAVA_HOME="D:/devloper/soft/<jdk-25 目录>"
 ```bash
 ./mvnw verify                 # 全量构建 + 测试
 ./mvnw -pl <module> test      # 单模块测试
-./mvnw -pl forge-distributions/forge-demo-app spring-boot:run   # 跑 Demo
+./mvnw -pl forge-distributions/forge-demo-app -am spring-boot:run   # 跑 Demo
 ```
 
 依赖优先直连 Maven Central；网速不佳时可用（不入库）`.mvn/local-settings.xml` 指向阿里云镜像，

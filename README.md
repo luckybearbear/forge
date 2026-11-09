@@ -14,7 +14,7 @@
 ./mvnw verify
 
 # 运行 Demo（mold + maintenance，内存存储零 DB）
-./mvnw -pl forge-distributions/forge-demo-app spring-boot:run
+./mvnw -pl forge-distributions/forge-demo-app -am spring-boot:run
 # API: http://localhost:8080/swagger-ui/index.html
 
 # 可选基础设施（PostgreSQL 18 + Redis 8，Phase 2 起需要）
@@ -32,6 +32,7 @@ docker compose --profile infra up -d
 | forge-apps | 具体业务应用 | 📦 Phase 2+ |
 | forge-starters | 统一自动装配 | ✅ |
 | forge-distributions | 应用组装（先看 forge-demo-app） | ✅ Demo |
+| forge-template | 新业务模块脚手架 | 📦 Phase 5 |
 
 文档：`docs/architecture`（依赖规则）· `docs/development`（上手）· `docs/database`（Flyway）· `docs/standards`（错误码/编码规范）
 

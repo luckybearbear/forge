@@ -4,6 +4,7 @@ import io.github.luckybearbear.forge.contract.mold.MoldQueryService;
 import io.github.luckybearbear.forge.demo.maintenance.api.MaintenanceOrderDTO;
 import io.github.luckybearbear.forge.demo.maintenance.domain.MaintenanceOrder;
 import io.github.luckybearbear.forge.demo.maintenance.domain.MaintenanceRegistry;
+import io.github.luckybearbear.forge.platform.core.BusinessException;
 import io.github.luckybearbear.forge.platform.core.IdGenerator;
 import java.time.Instant;
 import java.util.List;
@@ -32,7 +33,9 @@ public class MaintenanceService {
     }
 
     public MaintenanceOrderDTO findById(String id) {
-        return registry.find(id).map(this::toDto).orElse(null);
+        return registry.find(id).map(this::toDto)
+                .orElseThrow(() -> BusinessException.of(MaintenanceErrorCodes.MAINT_NOT_FOUND, id)
+                        .withHttpStatus(404));
     }
 
     public List<MaintenanceOrderDTO> findByMoldId(String moldId) {

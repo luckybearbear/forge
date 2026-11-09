@@ -27,9 +27,8 @@
     <maven.compiler.release>25</maven.compiler.release>
     <maven.compiler.parameters>true</maven.compiler.parameters>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- 依赖版本集中管理于 forge-bom；spring-boot.version 仅用于 Boot 插件 -->
     <spring-boot.version>4.1.2</spring-boot.version>
-    <spring-modulith.version>2.1.2</spring-modulith.version>
-    <springdoc.version>3.2.0</springdoc.version>
     <flatten-maven-plugin.version>1.7.1</flatten-maven-plugin.version>
     <maven-compiler-plugin.version>3.14.0</maven-compiler-plugin.version>
     <maven-surefire-plugin.version>3.5.3</maven-surefire-plugin.version>

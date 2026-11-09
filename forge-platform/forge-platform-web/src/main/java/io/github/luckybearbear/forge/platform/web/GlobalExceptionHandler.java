@@ -65,7 +65,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ValidationException.class)
     public ResponseEntity<Result<Void>> handleValidation(ValidationException ex) {
-        return badRequestMessage(ex.getMessage());
+        log.warn("validation exception: {}", ex.getMessage());
+        return badRequestMessage("请求参数校验失败");
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)

@@ -47,4 +47,10 @@ class ResultTest {
         assertThatThrownBy(() -> Result.error(fakeOk))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void errorRejectsNullErrorCode() {
+        assertThatThrownBy(() -> Result.error((ErrorCode) null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

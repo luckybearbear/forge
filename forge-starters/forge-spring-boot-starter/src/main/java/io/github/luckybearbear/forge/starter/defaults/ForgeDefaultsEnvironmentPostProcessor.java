@@ -14,6 +14,14 @@ public class ForgeDefaultsEnvironmentPostProcessor implements EnvironmentPostPro
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         Map<String, Object> defaults = new HashMap<>();
         defaults.put("management.endpoints.web.exposure.include", "health,info");
+        // spec §6.6：prod profile 下默认关闭 API 文档（低优先级，应用可显式开启覆盖）
+        for (String profile : environment.getActiveProfiles()) {
+            if ("prod".equals(profile)) {
+                defaults.put("springdoc.api-docs.enabled", false);
+                defaults.put("springdoc.swagger-ui.enabled", false);
+                break;
+            }
+        }
         environment.getPropertySources().addLast(new MapPropertySource("forgeDefaults", defaults));
     }
 }

@@ -18,6 +18,7 @@ public record Result<T>(String code, String message, T data) {
     }
 
     public static Result<Void> error(ErrorCode errorCode) {
+        requireError(errorCode);
         return error(errorCode, errorCode.defaultMessage());
     }
 

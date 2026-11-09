@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- 基于 Boot 官方 defaults：logging.pattern.console / logging.level.* / 结构化日志配置等标准属性全部生效；
+     traceId 经 Boot 的 LOG_CORRELATION_PATTERN（Micrometer Tracing 在类路径时自动渲染）。
+     应用可提供自己的 logback-spring.xml 覆盖（classpath 优先级高于本 jar）。
+     生产结构化日志：Phase 4 随 Boot 4 structured logging 配置启用。 -->
 <configuration>
-    <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="forge-app"/>
-    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [%X{traceId:-}] [${appName}] %logger{36} - %msg%n</pattern>
-        </encoder>
-    </appender>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
     </root>
