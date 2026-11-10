@@ -45,6 +45,9 @@ class AbstractAuditableEntityTest {
         assertThat(resolver.resolveCurrentTenantIdentifier()).isEqualTo("0");
         assertThat(resolver.validateExistingCurrentSessions()).isFalse();
 
+        var empty = supplierWith(Optional.empty(), false);
+        assertThat(new ForgeTenantIdentifierResolver(empty).resolveCurrentTenantIdentifier()).isEqualTo("0");
+
         var tenanted = supplierWith(Optional.of("t-9"), false);
         assertThat(new ForgeTenantIdentifierResolver(tenanted).resolveCurrentTenantIdentifier()).isEqualTo("t-9");
     }
