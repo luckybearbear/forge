@@ -67,4 +67,15 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.code").value("FORGE-0500"))
                 .andExpect(jsonPath("$.message").value("系统异常"));
     }
+
+    @Test
+    void optimisticLockConflictReturns409() throws Exception {
+        // TestRestController 增加 /test/optimistic-lock 端点：
+        // @GetMapping("/test/optimistic-lock") Result<Void> optimisticLock() {
+        //     throw new org.springframework.orm.ObjectOptimisticLockingFailureException(Object.class, 1);
+        // }
+        mvc.perform(get("/test/optimistic-lock"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("FORGE-0423"));
+    }
 }

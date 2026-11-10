@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -105,6 +106,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<Result<Void>> handleNoResource(NoResourceFoundException ex) {
         return ResponseEntity.status(404).body(Result.error(ErrorCodes.NOT_FOUND, "请求路径不存在"));
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<Result<Void>> handleOptimisticLock(ObjectOptimisticLockingFailureException ex) {
+        log.warn("optimistic lock conflict: {}", ex.getMessage());
+        return ResponseEntity.status(409).body(Result.error(ErrorCodes.CONCURRENT_LOCKED));
     }
 
     @ExceptionHandler(Exception.class)

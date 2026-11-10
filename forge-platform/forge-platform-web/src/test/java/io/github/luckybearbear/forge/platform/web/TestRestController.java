@@ -39,4 +39,9 @@ class TestRestController {
     Result<Void> boom() {
         throw new IllegalStateException("boom");
     }
+
+    @GetMapping("/test/optimistic-lock")
+    Result<Void> optimisticLock() {
+        throw new org.springframework.orm.ObjectOptimisticLockingFailureException(Object.class, 1);
+    }
 }
