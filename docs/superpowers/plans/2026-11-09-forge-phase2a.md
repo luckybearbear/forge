@@ -1719,7 +1719,7 @@ JAVA_HOME="$FORGE_JDK" ./mvnw -q clean -pl forge-starters/forge-data-starter -am
 # 预期：容器测试 2 个全绿。若 @TenantId 未生效（B 能看到 A 数据）：
 #   1) 检查 resolver 是否真正注册（日志 hibernate.tenant_identifier_resolver）
 #   2) Hibernate 7 discriminator 需要的额外配置（如 AvailableSettings.MULTI_TENANCY=DISCRIMINATOR？以实证为准）
-#   3) @SQLDelete 占位符 {h-table} 若报错 → 按 Task 5 fallback 去注解、保留 @SQLRestriction，测试断言改为验证过滤（deleteById 走硬删或 @Modifying——记录差异）
+#   3) @SQLDelete 占位符 {h-table} 若报错（Task 5 实证：hibernate-core 7.4.13 无该占位符）→ 首选 fallback：基类换 Hibernate 原生 @SoftDelete(columnName="deleted")，去掉 @SQLDelete/@SQLRestriction 两注解（原生过滤+删除改写一体，Task 5 测试的断言已兼容该形态）；次选：去 @SQLDelete 保留 @SQLRestriction、软删除走 service 显式置位
 # 任一 fallback 都必须在报告与 README 记录最终机制
 ```
 
