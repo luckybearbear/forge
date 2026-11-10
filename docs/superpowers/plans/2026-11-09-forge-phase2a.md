@@ -1474,8 +1474,9 @@ public class RedisCacheFacade implements CacheFacade {
 
 ```xml
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-testcontainers</artifactId></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId></dependency>
-    <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId></dependency>
+    <!-- Testcontainers 2.x 改名件（Boot BOM 管，Task 1 实证；1.x 旧名已停更不受管） -->
+    <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-junit-jupiter</artifactId></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-postgresql</artifactId></dependency>
 ```
 
 - [ ] **Step 2: 写失败集成测试（THE SPIKE）**
@@ -1710,7 +1711,7 @@ imports 文件：
 io.github.luckybearbear.forge.starter.data.ForgeDataAutoConfiguration
 ```
 
-- [ ] **Step 5: 跑 spike（Docker 必须）**
+- [ ] **Step 5: 跑 spike（Docker 必须；前置：`docker info` 可用——若本机 WSL/Docker 仍未修复则 BLOCKED 上报，不擅自改动系统服务）**
 
 ```bash
 JAVA_HOME="$FORGE_JDK" ./mvnw -q clean -pl forge-starters/forge-data-starter -am test
