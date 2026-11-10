@@ -10,4 +10,32 @@
   </parent>
   <artifactId>forge-platform-cache</artifactId>
   <name>Forge :: Platform :: Cache</name>
+  <dependencies>
+    <!-- RedisTemplate/RedisCacheManager（Boot BOM 管版本） -->
+    <dependency>
+      <groupId>org.springframework.data</groupId>
+      <artifactId>spring-data-redis</artifactId>
+    </dependency>
+    <!-- CurrentTenantSupplier（租户 key 规则，不依赖 platform-security） -->
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-platform-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- RedisCacheFacadeTest mock RedisTemplate -->
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
 </project>
