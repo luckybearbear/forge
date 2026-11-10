@@ -11,9 +11,15 @@
   <artifactId>forge-platform-data</artifactId>
   <name>Forge :: Platform :: Data</name>
   <dependencies>
+    <!-- JPA 基线（Phase 2 spec §3/§6.3 选型）：Boot BOM 管 Hibernate 版本（7.4.13.Final） -->
     <dependency>
-      <groupId>org.springframework.data</groupId>
-      <artifactId>spring-data-jdbc</artifactId>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
+    <!-- IdGenerator/UuidV7Generator/CurrentTenantSupplier（resolver 消费，不依赖 platform-security） -->
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-platform-core</artifactId>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
