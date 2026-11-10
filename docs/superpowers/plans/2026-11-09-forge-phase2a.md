@@ -89,6 +89,7 @@ git add forge-bom/pom.xml && git commit -m "build(bom): TTL 依赖入册 + Boot 
   - `@TenantIgnore`（方法/类级注解，RUNTIME）
   - `TenantContextHolderSupplier implements CurrentTenantSupplier`（spring 无关 POJO）
   - Phase 1 两个 Provider 的公开 API 不变（内部换 TTL；Phase 1 测试必须原样全绿）
+  - **TTL 注意（Task 2 实施裁定回填）**：TTL extends InheritableThreadLocal，裸新线程会隐式继承父租户（与隔离测试冲突）——所有 TTL holder 用匿名子类覆写 `childValue(parentValue) → null` 禁用隐式继承；跨线程传递只走显式 set/clear 或后续 TtlRunnable 包装
 
 - [ ] **Step 1: 写失败测试**
 
