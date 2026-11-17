@@ -6,7 +6,6 @@ import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 
 /**
  * service-identity 自动配置（照抄 service-tenant 范式样板）：应用只须引本 jar（经 forge-bom），
@@ -26,10 +25,10 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
  *     （tenant/authorization）而不依赖任何 service。</li>
  * </ul>
  *
- * <p><b>本模块增量：@EnableMethodSecurity</b>——{@code UserAppController} 的
- * {@code @PreAuthorize("hasAuthority('user:manage')")} 依赖方法安全激活（Spring Boot 不自动开启）。
- * 在此开启为平台默认（重复开启幂等；service-authorization Task 6 声明同类注解不冲突），
- * 未授权成员访问用户管理端点由 Spring Security 输出 403（FORGE-0403 统一体）。
+ * <p><b>@EnableMethodSecurity 已归属 forge-security-starter</b>（Task 4 裁定：方法安全是安全
+ * 能力，随 starter 装配而非 identity 挂靠）——{@code UserAppController} 的
+ * {@code @PreAuthorize("hasAuthority('user:manage')")} 由 starter 激活，未授权成员访问用户管理
+ * 端点由 Spring Security 输出 403（FORGE-0403 统一体）。Phase 2b Task 3 曾挂本类，已移除。
  */
 @AutoConfiguration
 @ComponentScan(basePackages = "io.github.luckybearbear.forge.service.identity",
@@ -37,6 +36,5 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
                 classes = AutoConfigurationExcludeFilter.class))
 @EntityScan(basePackages = "io.github.luckybearbear.forge.service.identity.domain")
 @EnableJpaRepositories(basePackages = "io.github.luckybearbear.forge.service.identity.domain")
-@EnableMethodSecurity
 public class IdentityServiceAutoConfiguration {
 }

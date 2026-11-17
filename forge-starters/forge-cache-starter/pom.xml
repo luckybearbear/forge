@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.github.luckybearbear</groupId>
+    <artifactId>forge-starters</artifactId>
+    <version>${revision}</version>
+  </parent>
+  <artifactId>forge-cache-starter</artifactId>
+  <name>Forge :: Starter :: Cache</name>
+  <dependencies>
+    <!-- CacheFacade/租户 key 规则/TenantRedisCacheManager（Phase 1 SPI，本 starter 兑现装配） -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-cache</artifactId></dependency>
+    <!-- CurrentTenantSupplier 接口在 platform-core（实现 bean 由 data-starter/应用侧提供） -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-core</artifactId></dependency>
+    <!-- Redis 栈整件（spring-data-redis + Lettuce + spring-boot-data-redis 自动配置模块）：
+         starter 于 Boot 的 DataRedisAutoConfiguration 之前定序，redisTemplate 让位语义见 README -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId></dependency>
+    <!-- JSON 值序列化直接引用 Jackson3（spring-data-redis 对 jackson-databind 是可选依赖；
+         版本由 Boot BOM 管理（jackson-bom，tools.jackson 坐标）） -->
+    <dependency><groupId>tools.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+    <!-- tests -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-test</artifactId><scope>test</scope></dependency>
+    <!-- 测试装配 CurrentTenantSupplier（TenantContextHolderSupplier）+ TenantTestSupport 用 -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-security</artifactId><scope>test</scope></dependency>
+    <!-- 跨连接原始 key 断言的可见性窗口兜底（DefaultRedisCacheWriter 写入对其他连接可见有 ms 级滞后） -->
+    <dependency><groupId>org.awaitility</groupId><artifactId>awaitility</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>

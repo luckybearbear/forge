@@ -12,8 +12,8 @@
 - **自动配置**：`IdentityServiceAutoConfiguration` = `@AutoConfiguration` + `@ComponentScan(模块根包)` +
   显式 `AutoConfigurationExcludeFilter` 自排 + `@EntityScan(domain)`（Boot 4 新包
   `org.springframework.boot.persistence.autoconfigure`）+ `@EnableJpaRepositories(domain)`；无 `@Bean`。
-  本模块增量：**`@EnableMethodSecurity`**——`@PreAuthorize`（user:manage 门禁）须显式激活
-  （Boot 不自动开），在此开启为平台默认；重复声明幂等，Task 6 authorization 同注解不冲突。
+  `@EnableMethodSecurity` **已移至 forge-security-starter**（Task 4 裁定：方法安全是安全
+  能力随 starter 装配；Phase 2b Task 3 曾挂本类）——`@PreAuthorize`（user:manage 门禁）由 starter 激活。
 - **包布局**：`domain/`（实体+仓库）· `app/`（AuthService/UserService + 请求响应 record）·
   `controller/app/`、`controller/admin/`（双端前缀路由：包名决定 `/app-api`、`/admin-api` 前插）·
   模块根包（自动配置 + 契约实现 `IdentityUserQueryServiceImpl`）。
@@ -58,7 +58,9 @@
 - create：租户内 username 唯一（IDENT-0409/409）；初始密码弱校验（IDENT-0400）；发 `UserCreated`
   （payload 显式 tenantId——@TenantId 插入时才绑定，publish 时实体字段尚未回填，取当前上下文）。
 - changePassword：旧密码错 IDENT-0401（与登录同码防枚举）；新密码弱 IDENT-0400；成功发
-  `UserPasswordChanged`（**既有 token 的吊销由监听方承担**——本服务不代持按用户的 token 索引）。
+  `UserPasswordChanged`。**既有 token 由 forge-security-starter 的 UserPasswordChangedListener
+  即时吊销**（Task 4 安全输入 2，随 Task 6 提交）：改密返回时旧 token 已不可 resolve（本服务
+  仍不代持 token 索引——revokeByUserId 在 TokenStore 实现内）。
 - enable/disable：幂等状态迁移；DISABLED 用户登录按坏凭据拒绝（不泄露停用状态）。
 - findById：租户视角（判别式隔离，跨租户 id → IDENT-0404[404]）。
 - **弱密码规则（IDENT-0400）**：≥8 位且同时含字母与数字——简单规则，复杂度策略属后续演进；
@@ -82,13 +84,15 @@
 
 ## 集成实证
 
-`IdentityServiceIntegrationTest`（12 用例，真实 postgres:18-alpine + redis:8-alpine 容器；
+`IdentityServiceIntegrationTest`（14 用例，真实 postgres:18-alpine + redis:8-alpine 容器；
 `@SpringBootTest(NONE)` + `@Import(IdentityServiceAutoConfiguration)`，token 生命周期走
 security-starter 的 **RedisTokenStore**）：app 登录成功（token 可 resolve、grant 含租户/MEMBER/
 空权限集 + finally clear 卫生）、未知租户 TENANT-0404/404、停用租户 TENANT-0423、
 **坏凭据三态同码同文案**（用户不存在/密码错/账号停用，不泄露）、admin 登录（tenantId=null +
 PLATFORM + 空集；坏凭据同码）、logout 后 resolve 为空、改密（旧密码错 IDENT-0401/弱新密码
-IDENT-0400/成功发 UserPasswordChanged 且旧密码失败新密码可登录）、用户创建重复名 IDENT-0409/409
+IDENT-0400/成功发 UserPasswordChanged 且旧密码失败新密码可登录）、**登录恒时**（未命中/密码错/停用/
+成功各恰一次 bcrypt，可计数桩断言）、**改密即时吊销既有 token**（两 token 改密后双双失效，新密码
+可登，identity × security-starter 联测）、用户创建重复名 IDENT-0409/409
 + UserCreated 单发 + 跨租户可重名、弱初始密码 IDENT-0400、契约查询租户视角隔离
 （本租户命中/他租户空/平台视角空）。`IdentityServicePermissionsGrantTest`（1 用例）：UserPermissionsQuery
 装配后登录 grant 携带真实权限点。
@@ -111,5 +115,5 @@ IDENT-0400/成功发 UserPasswordChanged 且旧密码失败新密码可登录）
 - **admin 侧无自助改密端点**：种子口令更换暂经 SQL/后续任务；admin 密码哈希更新走
   `platform_admin.password_hash`（同 `{bcrypt}` 前缀格式）。
 - **DISABLED 用户改密/登录语义**：登录按坏凭据拒绝；改密未拦截停用用户（管理员恢复流程的一部分）。
-- **logout 未吊销该用户全部 token**：按 token 粒度吊销；全端下线依赖 UserPasswordChanged 监听方
-  （Task 6+/审计侧）实现。
+- **logout 未吊销该用户全部 token**：按 token 粒度吊销；全端下线走改密通道
+  （UserPasswordChanged → security-starter 监听 revokeByUserId，已实现）。

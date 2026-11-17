@@ -10,6 +10,7 @@ import io.github.luckybearbear.forge.contract.tenant.TenantErrorCodes;
 import io.github.luckybearbear.forge.contract.tenant.TenantQueryService;
 import io.github.luckybearbear.forge.platform.core.BusinessException;
 import io.github.luckybearbear.forge.platform.security.TenantContextHolder;
+import io.github.luckybearbear.forge.platform.security.password.PasswordHasher;
 import io.github.luckybearbear.forge.platform.security.token.StoredToken;
 import io.github.luckybearbear.forge.platform.security.token.TokenStore;
 import io.github.luckybearbear.forge.platform.test.AbstractIntegrationTest;
@@ -28,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -72,6 +74,28 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
         EventRecorder eventRecorder() {
             return new EventRecorder();
         }
+
+        /** 计数哈希器：委托真实实现，仅统计 matches 调用——恒时比较断言用（Task 4 安全输入 1）。 */
+        @Bean
+        CountingPasswordHasher countingPasswordHasher() {
+            return new CountingPasswordHasher();
+        }
+    }
+
+    /** matches 计数包装（hash 不计）：starter 的 @ConditionalOnMissingBean 哈希器让位本 bean。 */
+    static class CountingPasswordHasher extends PasswordHasher {
+
+        final AtomicInteger matchesCalls = new AtomicInteger();
+
+        @Override
+        public boolean matches(String raw, String encoded) {
+            matchesCalls.incrementAndGet();
+            return super.matches(raw, encoded);
+        }
+
+        int resetMatchesCount() {
+            return matchesCalls.getAndSet(0);
+        }
     }
 
     /** 租户契约桩：状态可控（ENABLED/DISABLED/缺失 → TENANT-0423/不存在）。 */
@@ -113,6 +137,7 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired AuthService authService;
     @Autowired UserService userService;
+    @Autowired CountingPasswordHasher hasher;
     @Autowired UserQueryService userQueryService; // 契约 bean（模块根包 IdentityUserQueryServiceImpl）
     @Autowired IdentityUserRepository userRepository;
     @Autowired TokenStore tokenStore;
@@ -362,6 +387,64 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(foreign).isEmpty(); // 他租户视角不可见（同 username 唯一索引也按 (tenant_id, username)）
 
         assertThat(userQueryService.findById(created.id())).isEmpty(); // 无上下文=平台视角，租户表恒空
+    }
+
+    /**
+     * 登录恒时比较（Task 4 安全输入 1）：未命中用户/停用/密码错误三条拒绝路径各执行<b>恰一次</b>
+     * 等代价 bcrypt（未命中/停用对固定 dummy hash 比较）——响应时间不可用作用户名枚举信号；
+     * 成功路径同为一次。修复前未命中路径短路 0 次（可计时区分用户存在性）。
+     */
+    @Test
+    void loginRunsExactlyOneBcryptComparisonOnEveryPath() {
+        tenants.register(tenant(TENANT_ACME, "const-time", "ENABLED"));
+        UserDTO known = TenantTestSupport.runAsResult(TENANT_ACME,
+                () -> userService.create("timing", null, "Passw0rd123"));
+
+        // 未命中用户：恰一次（对 dummy hash）
+        hasher.resetMatchesCount();
+        catchLogin(appLogin("const-time", "ghost-user", "Passw0rd123"));
+        assertThat(hasher.resetMatchesCount()).isEqualTo(1);
+
+        // 密码错误：恰一次（对真实 hash）
+        hasher.resetMatchesCount();
+        catchLogin(appLogin("const-time", "timing", "WrongPass1x"));
+        assertThat(hasher.resetMatchesCount()).isEqualTo(1);
+
+        // 账号停用：恰一次（对 dummy hash——停用即拒绝，不校验真实口令）
+        hasher.resetMatchesCount();
+        TenantTestSupport.runAs(TENANT_ACME, () -> userService.disable(known.id()));
+        catchLogin(appLogin("const-time", "timing", "Passw0rd123"));
+        assertThat(hasher.resetMatchesCount()).isEqualTo(1);
+
+        // 成功路径：恰一次
+        TenantTestSupport.runAs(TENANT_ACME, () -> userService.enable(known.id()));
+        hasher.resetMatchesCount();
+        assertThat(authService.appLogin(appLogin("const-time", "timing", "Passw0rd123")).userId())
+                .isEqualTo(known.id());
+        assertThat(hasher.resetMatchesCount()).isEqualTo(1);
+    }
+
+    /** 改密后旧 token 即时吊销（Task 4 安全输入 2 联测：identity 事件 × security-starter 监听 × TokenStore）。 */
+    @Test
+    void changePasswordRevokesExistingTokensImmediately() {
+        tenants.register(tenant(TENANT_ACME, "pw-revoke", "ENABLED"));
+        UserDTO created = TenantTestSupport.runAsResult(TENANT_ACME,
+                () -> userService.create("revokeme", null, "Passw0rd123"));
+        LoginResponse first = authService.appLogin(appLogin("pw-revoke", "revokeme", "Passw0rd123"));
+        LoginResponse second = authService.appLogin(appLogin("pw-revoke", "revokeme", "Passw0rd123"));
+        assertThat(tokenStore.resolve(first.token())).isPresent();
+        assertThat(tokenStore.resolve(second.token())).isPresent();
+
+        // 改密（事务内发布 UserPasswordChanged → starter 监听器同步 revokeByUserId）
+        TenantTestSupport.runAs(TENANT_ACME,
+                () -> userService.changePassword(created.id(), "Passw0rd123", "NewPass456x"));
+
+        assertThat(tokenStore.resolve(first.token())).isEmpty();
+        assertThat(tokenStore.resolve(second.token())).isEmpty();
+
+        // 新密码可登录（吊销只清既有会话，不影响账号本身）
+        LoginResponse reLogin = authService.appLogin(appLogin("pw-revoke", "revokeme", "NewPass456x"));
+        assertThat(tokenStore.resolve(reLogin.token())).isPresent();
     }
 
     private BusinessException catchLogin(AppLoginRequest request) {

@@ -1,7 +1,11 @@
 package io.github.luckybearbear.forge.starter.security;
 
 import io.github.luckybearbear.forge.platform.security.token.InMemoryTokenStore;
+import io.github.luckybearbear.forge.platform.security.token.StoredToken;
+import io.github.luckybearbear.forge.platform.security.token.TokenGrant;
 import io.github.luckybearbear.forge.platform.security.token.TokenStore;
+import java.time.Duration;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -50,5 +54,26 @@ class ForgeTokenStoreFallbackTest {
             // 降级必须可观测：warn 文案取自实现（重启即全员下线、多实例不共享，生产必须 Redis）
             assertThat(output).contains("falling back to InMemoryTokenStore");
         });
+    }
+
+    /** InMemory 实现的 revokeByUserId（Task 4 安全输入 2 降级路径同语义）：只吊销目标用户 + 幂等。 */
+    @Test
+    void inMemoryRevokeByUserIdRevokesOnlyTargetUser() {
+        InMemoryTokenStore store = new InMemoryTokenStore();
+        StoredToken first = store.create(grant("u-mem"), Duration.ofHours(1));
+        StoredToken second = store.create(grant("u-mem"), Duration.ofHours(1));
+        StoredToken other = store.create(grant("u-keep"), Duration.ofHours(1));
+
+        store.revokeByUserId("u-mem");
+
+        assertThat(store.resolve(first.token())).isEmpty();
+        assertThat(store.resolve(second.token())).isEmpty();
+        assertThat(store.resolve(other.token())).isPresent();
+        store.revokeByUserId("u-unknown"); // 幂等 no-op
+        assertThat(store.resolve(other.token())).isPresent();
+    }
+
+    private static TokenGrant grant(String userId) {
+        return new TokenGrant(userId, "t-mem", "MEMBER", Set.of());
     }
 }

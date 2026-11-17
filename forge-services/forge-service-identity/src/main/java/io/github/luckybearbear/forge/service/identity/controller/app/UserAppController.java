@@ -18,8 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
  * 作用域为当前认证租户（TokenAuthFilter 填充的租户上下文，判别式天然隔离）。
  *
  * <p>类级 {@code @PreAuthorize("hasAuthority('user:manage')")}：权限点由 service-authorization
- * 分配（权限点 seed 见 Task 6）；方法安全由 IdentityServiceAutoConfiguration 的
- * {@code @EnableMethodSecurity} 激活，未授权访问输出 403（FORGE-0403 统一体）。
+ * 分配（权限点 seed 见 Task 6）；方法安全由 forge-security-starter 自动配置的
+ * {@code @EnableMethodSecurity} 激活（Task 4 裁定归属），未授权访问输出 403（FORGE-0403 统一体）。
  * 控制器薄层：校验 + Result 包装，业务语义（错误码/事件）全在 {@link UserService}。
  */
 @RestController

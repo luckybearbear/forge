@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -32,6 +33,11 @@ import org.springframework.security.web.access.ExceptionTranslationFilter;
  *       401/403 统一 Result 输出；TokenAuthFilter 以 new 注入链（不暴露为 @Bean Filter，
  *       避免 Boot 全局注册导致的二次执行）</li>
  *   <li>@TenantIgnore AOP：方法/类级切面切换平台视角，finally 还原</li>
+ *   <li><b>@EnableMethodSecurity（Task 4 裁定归属本 starter）</b>：方法安全是安全能力，激活
+ *       {@code @PreAuthorize}（identity 的 user:manage 门禁、authorization 的 role:manage 门禁等）；
+ *       重复声明幂等，此前挂在 IdentityServiceAutoConfiguration（Phase 2b Task 3）已移除</li>
+ *   <li><b>UserPasswordChangedListener（Task 4 安全输入 2）</b>：消费 identity 契约事件，
+ *       {@code TokenStore.revokeByUserId} 吊销改密用户全部 token</li>
  * </ul>
  *
  * <p>两处排序实证（Task 10 集成测试 + 条件评估报告）：
@@ -46,6 +52,7 @@ import org.springframework.security.web.access.ExceptionTranslationFilter;
  */
 @AutoConfiguration(before = org.springframework.boot.security.autoconfigure.web.servlet.ServletWebSecurityAutoConfiguration.class)
 @EnableConfigurationProperties(ForgeSecurityProperties.class)
+@EnableMethodSecurity
 public class ForgeSecurityAutoConfiguration {
 
     /**
@@ -110,6 +117,16 @@ public class ForgeSecurityAutoConfiguration {
     @ConditionalOnMissingBean
     PasswordHasher forgePasswordHasher() {
         return new PasswordHasher();
+    }
+
+    /**
+     * 改密会话失效监听（Task 4 安全输入 2）：UserPasswordChanged → revokeByUserId（同步，
+     * 改密返回时旧 token 已失效）。@ConditionalOnMissingBean 让位自定义吊销策略。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    UserPasswordChangedListener forgeUserPasswordChangedListener(TokenStore tokenStore) {
+        return new UserPasswordChangedListener(tokenStore);
     }
 
     @Configuration(proxyBeanMethods = false)

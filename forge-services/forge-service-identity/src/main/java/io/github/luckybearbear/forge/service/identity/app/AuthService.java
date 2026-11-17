@@ -51,7 +51,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * </ul>
  *
  * <p><b>坏凭据不泄露存在性</b>：用户不存在、密码错误、账号停用三种情形同一 {@code IDENT-0401}
- * 同一文案（defaultMessage 无占位符）——响应不可区分，防用户名枚举。
+ * 同一文案（defaultMessage 无占位符）——响应不可区分，防用户名枚举；且<b>恒时</b>（Task 4 安全
+ * 输入 1）：三路径各执行恰一次等代价 bcrypt（未命中/停用对固定 dummy hash 比较，见
+ * {@link #constantTimeVerified}），响应时间同样不可区分。
  *
  * <p><b>权限集装配（预检裁定）</b>：{@link UserPermissionsQuery} 经 {@link ObjectProvider} 注入——
  * service-authorization 未装配（identity 独立运行/测试）时缺省空权限集 + 首次 warn 一次；
@@ -69,6 +71,14 @@ public class AuthService {
     public static final String USER_TYPE_MEMBER = "MEMBER";
     /** admin 端 token 的 userType 标记（平台管理员，无租户）。 */
     public static final String USER_TYPE_PLATFORM = "PLATFORM";
+
+    /**
+     * 恒时比较垫底 hash（Task 4 安全输入 1）：{@code "123456"} 的 bcrypt（{bcrypt} 前缀走
+     * DelegatingPasswordEncoder 路由）。未命中用户/停用路径对它执行等代价比较——与真实校验
+     * 同为一次 bcrypt（~10 cost），三路径耗时不可区分。
+     */
+    static final String DUMMY_PASSWORD_HASH =
+            "{bcrypt}$2a$10$cihGDNl8YWnShl6e/WBE9.iRwpgq6fDshMZXqmtPbX8kAnpCg8uzG";
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
@@ -111,8 +121,8 @@ public class AuthService {
             throw BusinessException.of(TenantErrorCodes.TENANT_DISABLED);
         }
         IdentityUserEntity user = findByUsernameUnderTenant(tenant.id(), request.username());
-        if (user == null || user.getStatus() != UserStatus.ENABLED
-                || !passwordHasher.matches(request.password(), user.getPasswordHash())) {
+        if (!constantTimeVerified(user != null && user.getStatus() == UserStatus.ENABLED,
+                request.password(), user == null ? null : user.getPasswordHash())) {
             // 用户不存在/账号停用/密码错误同码同文案（不泄露存在性）
             throw BusinessException.of(IdentityErrorCodes.IDENT_BAD_CREDENTIALS);
         }
@@ -125,8 +135,8 @@ public class AuthService {
     /** admin 端登录：平台管理员（全局表直查）；grant.tenantId=null（平台 token 不填充租户上下文）。 */
     public LoginResponse adminLogin(AdminLoginRequest request) {
         PlatformAdminEntity admin = adminRepository.findByUsername(request.username()).orElse(null);
-        if (admin == null || admin.getStatus() != UserStatus.ENABLED
-                || !passwordHasher.matches(request.password(), admin.getPasswordHash())) {
+        if (!constantTimeVerified(admin != null && admin.getStatus() == UserStatus.ENABLED,
+                request.password(), admin == null ? null : admin.getPasswordHash())) {
             throw BusinessException.of(IdentityErrorCodes.IDENT_BAD_CREDENTIALS);
         }
         StoredToken token = tokenStore.create(
@@ -165,6 +175,16 @@ public class AuthService {
         } finally {
             TenantContextHolder.clear();
         }
+    }
+
+    /**
+     * 登录恒时比较（Task 4 安全输入 1）：每条路径（未命中/停用/密码错/成功）各执行<b>恰一次</b>
+     * 等代价 bcrypt——主体未命中或停用时对固定 {@link #DUMMY_PASSWORD_HASH} 比较（短路 0 次的版本
+     * 可经响应时间枚举用户名）。active=false 时比较结果被丢弃（停用账号即便口令正确也拒绝）。
+     */
+    private boolean constantTimeVerified(boolean active, String rawPassword, String realHash) {
+        boolean matched = passwordHasher.matches(rawPassword, active ? realHash : DUMMY_PASSWORD_HASH);
+        return active && matched;
     }
 
     /** 权限集：authorization 服务装配则按 (tenantId, userId) 查询；未装配缺省空集 + 首次 warn。 */

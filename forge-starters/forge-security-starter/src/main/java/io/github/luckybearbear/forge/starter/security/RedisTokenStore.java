@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import tools.jackson.databind.ObjectMapper;
@@ -26,13 +27,17 @@ import tools.jackson.databind.json.JsonMapper;
  *       吊销/逐出时不复活（revoke 后不可复活；旧 GET→SET 两步在窗口内可复活已吊销 token）</li>
  *   <li>resolve 双保险：键已被 Redis 逐出（TTL 到）自然 miss；JSON 内 expiresAt 再校验一次
  *       （防御 refresh 与逐出竞态及外部改 TTL 的运维操作）</li>
+ *   <li><b>user 索引（Task 4 安全输入 2）</b>：create 时 SADD {@code auth:user-tokens:{userId}} +
+ *       键级 TTL（= token TTL）；refresh 续期时同步续索引 TTL（索引恒 ≥ 其内最长 token 生命周期）；
+ *       {@code revokeByUserId} 遍历索引删除 token 键并清索引——改密吊销既有会话的承接点</li>
  * </ul>
  *
- * 语义对齐 TokenStore 四方法；生产实现，无 Redis 类路径时由自动配置降级 InMemoryTokenStore。
+ * 语义对齐 TokenStore 五方法；生产实现，无 Redis 类路径时由自动配置降级 InMemoryTokenStore。
  */
 public class RedisTokenStore implements TokenStore {
 
     static final String KEY_PREFIX = "auth:token:";
+    static final String USER_INDEX_PREFIX = "auth:user-tokens:";
 
     /**
      * 条件重写（单键原子）：键存在 → 以 ARGV[1]（新 JSON）+ PX ARGV[2]（毫秒 TTL）重设并返回 1；
@@ -57,6 +62,7 @@ public class RedisTokenStore implements TokenStore {
         String token = idGenerator.nextId();
         StoredToken stored = new StoredToken(token, grant, Instant.now().plus(ttl));
         redis.opsForValue().set(key(token), mapper.writeValueAsString(stored), ttl);
+        indexToken(grant.userId(), token, ttl);
         return stored;
     }
 
@@ -88,6 +94,33 @@ public class RedisTokenStore implements TokenStore {
         if (!Boolean.TRUE.equals(refreshed)) {
             return; // 读值与条件重写窗口内键消失（过期/吊销竞态）：不复活，静默放弃
         }
+        indexToken(stored.grant().userId(), token, ttl); // 续期后索引 TTL 同步延长（索引 ≥ 最长 token 生命周期）
+    }
+
+    /**
+     * 按用户吊销全部 token（幂等）：遍历索引删除 token 键 + 清索引键。无租户语义——token 键空间
+     * 全局唯一，按 userId 全域吊销（改密等会话失效事件由 security-starter 监听器调用）。
+     */
+    @Override
+    public void revokeByUserId(String userId) {
+        String indexKey = userIndexKey(userId);
+        Set<String> tokens = redis.opsForSet().members(indexKey);
+        if (tokens != null) {
+            tokens.forEach(token -> redis.delete(key(token)));
+        }
+        redis.delete(indexKey);
+    }
+
+    /** 登记用户索引：SADD + 键级 TTL（EXPIRE 覆写为本次写值——统一 TTL 策略下新写者剩余寿命最长，
+     * 索引恒 ≥ 其内最长 token；异 TTL 策略属后续演进注记）。 */
+    private void indexToken(String userId, String token, Duration ttl) {
+        String indexKey = userIndexKey(userId);
+        redis.opsForSet().add(indexKey, token);
+        redis.expire(indexKey, ttl);
+    }
+
+    private static String userIndexKey(String userId) {
+        return USER_INDEX_PREFIX + userId;
     }
 
     private static String key(String token) {

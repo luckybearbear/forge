@@ -15,5 +15,6 @@
     <module>forge-service-tenant</module>
     <module>forge-service-identity</module>
     <module>forge-service-organization</module>
+    <module>forge-service-authorization</module>
   </modules>
 </project>

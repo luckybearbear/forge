@@ -13,6 +13,8 @@
   <dependencies>
     <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-security</artifactId></dependency>
     <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-core</artifactId></dependency>
+    <!-- UserPasswordChanged 监听（改密吊销既有会话，Task 4 安全输入 2）：消费 identity 契约事件 -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-identity</artifactId></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
     <!-- Boot 4 改名件：starter-aop → starter-aspectj（4.1.2 BOM 实证，无 starter-aop） -->
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aspectj</artifactId></dependency>
