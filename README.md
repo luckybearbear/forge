@@ -24,6 +24,20 @@ docker compose --profile infra up -d
 # API: http://localhost:8080/swagger-ui/index.html（app 端统一 /app-api 前缀）
 ```
 
+### 认证体验（Phase 2b：登录 → token → swagger Bearer）
+
+demo profile 启动即铺种子（两租户三账号，幂等可重启；Redis 必备——token 存储与权限快照缓存）：
+
+```bash
+SPRING_PROFILES_ACTIVE=demo ./mvnw -pl forge-distributions/forge-demo-app -am spring-boot:run
+```
+
+1. 登录：`POST /app-api/auth/login`，体 `{"tenantCode":"t-mfg","username":"mfg-admin","password":"Admin@123"}` → 取 `data.token`
+2. swagger 右上 **Authorize** 填 `Bearer <token>`（含 `Bearer ` 前缀）→ 调业务端点（mold-viewer 登录后越权 POST → 403 FORGE-0403）
+3. 管理面：`POST /admin-api/auth/login` 用平台管理员 `admin` / `admin123`（初始口令，首登后尽快经改密通道更换）
+
+种子表/权限快照（变更需重登）/审计落表等细节见 `forge-distributions/forge-demo-app/README.md` 与 `docs/development/getting-started.md`。
+
 ## 模块导览
 
 | 目录 | 职责 | 状态 |
@@ -31,9 +45,9 @@ docker compose --profile infra up -d
 | forge-bom | 依赖版本唯一入口 | ✅ |
 | forge-platform/* | 日志/异常/审计/数据(JPA 租户基线)/缓存(租户前缀)/安全(token+租户上下文)/存储技术底座 | 按模块 |
 | forge-contracts/* | 跨模块接口/DTO/事件/错误码 | ✅ 示例 |
-| forge-services | 身份/组织/权限/租户等业务共享能力 | 📦 Phase 2b（认证/四服务） |
+| forge-services | 业务共享服务：tenant（租户/套餐）/ identity（双端认证/用户）/ organization（组织树/岗位）/ authorization（角色/权限）——自动配置库形态，引依赖即得 bean/建表/路由 | ✅ 四服务（2b） |
 | forge-apps | 具体业务应用 | 📦 Phase 2+ |
-| forge-starters | 统一自动装配：web 基线（forge-spring-boot-starter）+ 按需 forge-data-starter / forge-security-starter | ✅ |
+| forge-starters | 统一自动装配：web 基线（forge-spring-boot-starter）+ 按需 data / security / cache starter + 组合型 audit starter（访问/错误日志落库） | ✅ |
 | forge-distributions | 应用组装（先看 forge-demo-app） | ✅ Demo（连库多租户） |
 | forge-template | 新业务模块脚手架 | 📦 Phase 5 |
 

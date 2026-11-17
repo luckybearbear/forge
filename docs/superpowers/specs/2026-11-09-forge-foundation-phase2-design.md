@@ -230,13 +230,15 @@ demo-app 依赖三 starter（web + data + security）。
 5. demo swagger 双端完整可体验（登录获取 token → 调用业务端点）
 6. `./mvnw verify` 全绿（总数以实施为准）
 
-## 11.1 Phase 2a 修订记录（终审裁定，2026-11）
+## 11.1 修订记录（Phase 2a 终审裁定 + Phase 2b 完成，2026-11）
 
 - **§6.6 访问/错误日志落库 → 移交 2b**（原列于 §2.1-2a 第 10 项后半）：2a 只交付 JPA Auditing 桥接；日志落库随 2b identity 的用户/租户上下文一起实施与验收（userId/tenant 字段此时才可真实填充）。属交付清单与验收清单的接缝漏项，非技术降级。
 - **§6.4 勘误**：ignore/无租户的 cache key 实现为 `p:{key}` 前缀（实现优于原文"无前缀"，已命名空间化），以 `docs/architecture/dependency-rules.md` 记载的实现为准。
 - **§6.1 勘误**：`forge.security.tenant.ignore-urls` 未实施且判定为不需要——登录/租户注册等端点触碰的是非 @TenantId 全局表，无需 URL 级逃生口。
 - **§6.2 勘误**：TokenStore"无 Redis 配置时降级"实为"Redis 类路径缺席时降级"（类路径在场而无服务器时不降级，认证请求将报连接错误）——2b 决定是否做连接健康度降级。
 - **§6.5 补充**：平台视角（ignore）是**读视角**；其下的写操作会落 `tenant_id='0'` 行（视为错放数据，所有租户不可见）。2b 增加 persist 守护。
+
+Phase 2b 完成记录（2026-11）：四服务（tenant/identity/organization/authorization，自动配置库形态）+ 2a 移交的访问/错误日志落库兑现（forge-audit-starter）+ 两条安全输入落地（登录恒时比较、改密吊销 UserPasswordChanged→revokeByUserId）；demo 认证全链路八场景验收（DemoAuthFlowIntegrationTest），实现纪要见 `docs/architecture/dependency-rules.md`（服务装配形态/事件清单/Filter 时序/认证语义）。**偏差**：`@TenantIgnore` 与登录上下文管理的 `REQUIRES_NEW` 在 OSIV 下不等价（判别式随会话开启解析，Task 8 全栈实证 REQUIRES_NEW 不足以恢复）→ demo 关闭 OSIV，Phase 3 系统性裁定（data-starter 默认值与等价性声明）。Phase 3 预告：幂等/限流/分布式锁（FORGE-0429 转正）、数据权限实施、OSIV 裁定。
 
 ## 12. 风险与实施时验证项
 

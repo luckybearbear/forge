@@ -60,6 +60,31 @@ Demo（forge-demo-app）连 PostgreSQL 运行，本地基础设施二选一（�
 **宿主端口冲突**：compose 的 PG 固定映射宿主 5432，与本地已有 PG（如 pg15/pg18 常驻容器）冲突时
 二选一：停掉其一，或改 compose 端口映射（如 `"15432:5432"`）并经 `FORGE_DB_URL` 指向新端口。
 
+## Demo 认证体验（demo profile 种子与初始口令）
+
+以 `SPRING_PROFILES_ACTIVE=demo` 启动 Demo 即由 `DemoDataSeeder` 铺底认证全链路的初始数据
+（经服务 API 创建、幂等可重启；集成测试上下文用 `test` 同一份；**Redis 必备**——token 存储
+与权限快照缓存）。两租户三账号：
+
+| 租户 | 编码 | 用户 | 口令 | 角色 |
+|------|------|------|------|------|
+| 精密制造 | t-mfg | mfg-admin | Admin@123 | ADMIN（全权限） |
+| 模具车间 | t-mold | mold-admin | Admin@123 | ADMIN（全权限） |
+| 模具车间 | t-mold | mold-viewer | Viewer@123 | VIEWER（仅 mold:read，演示 403） |
+
+登录 `POST /app-api/auth/login`（体含 tenantCode/username/password）→ `data.token` → swagger
+右上 **Authorize** 填 `Bearer <token>`（含前缀）。管理面 `POST /admin-api/auth/login` 用平台
+管理员 **admin / admin123**（service-identity Flyway 种子行；**初始口令仅供首登体验，登录后应尽快
+经改密通道更换**）。权限快照冻结（授权变更需重登）、审计落表等完整体验流见
+`forge-distributions/forge-demo-app/README.md`。
+
+## OSIV：连库应用建议关闭
+
+连库应用建议显式 `spring.jpa.open-in-view=false`（demo 已关）：判别式租户在 Hibernate 会话
+开启时解析，OSIV 的请求级会话先于租户上下文填充开启 → 判别式恒解析为平台租户 `"0"`（租户表
+恒空；Phase 2b Task 8 实证：`REQUIRES_NEW` 另开会话亦不足以恢复，appLogin 恒 IDENT-0401）。
+详见 `docs/architecture/dependency-rules.md` 的 OSIV 小节。
+
 ## IDE
 
 将仓库作为 Maven 项目导入；Annotation Processing 无需配置（本项目不使用 Lombok）。
