@@ -37,8 +37,10 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
  *
  * <p><b>body 摘要</b>：仅当 request 为 {@link ContentCachingRequestWrapper}（web-starter 的
  * CacheRequestBodyFilter 装配；被 {@code exclude-urls} 排除或自定义栈未包装时为 null）；
- * 缓存体本身已被 wrapper 的 contentCacheLimit 截断，此处再按 max-body-size 防御性截断后
- * 转 UTF-8 串。GET 等未读体请求为空串。
+ * 缓存体本身已被 wrapper 的 contentCacheLimit 截断，此处再按 max-body-size 防御性截断，
+ * 转 UTF-8 串后<b>剥离 ISO 控制字符</b>（保留 \t/\n/\r 与全部可见字符）——PG text 拒绝
+ * U+0000，二进制 body（protobuf/压缩流）原样入库会使监听器 INSERT 失败、event_publication
+ * 卡 incomplete；摘要是有损可读快照而非还原。GET 等未读体请求为空串。
  *
  * <p><b>审计不反噬请求</b>：发布异常仅 warn（访问日志缺失可容忍，请求语义不可损）。
  */
@@ -81,7 +83,7 @@ public class ApiAccessLogFilter extends OncePerRequestFilter {
                     durationMs, bodyDigest(request), occurredAt);
             publishTransaction.executeWithoutResult(status -> eventPublisher.publishEvent(event));
         } catch (Exception ex) {
-            log.warn("access log publish skipped: {}", ex.getMessage());
+            log.warn("access log publish skipped: {}", ex.getMessage(), ex);
         }
     }
 
@@ -92,6 +94,19 @@ public class ApiAccessLogFilter extends OncePerRequestFilter {
         byte[] cached = wrapper.getContentAsByteArray();
         int limit = (int) Math.min(maxBodySize, Integer.MAX_VALUE);
         byte[] truncated = cached.length > limit ? Arrays.copyOf(cached, limit) : cached;
-        return new String(truncated, StandardCharsets.UTF_8);
+        return stripControlChars(new String(truncated, StandardCharsets.UTF_8));
+    }
+
+    /** 剥离 ISO 控制字符（C0 0x00-0x1F 除 \t/\n/\r、DEL 0x7F、C1 0x80-0x9F）——PG text 拒绝 U+0000。 */
+    private static String stripControlChars(String digest) {
+        StringBuilder stripped = new StringBuilder(digest.length());
+        digest.codePoints().forEach(codePoint -> {
+            boolean keep = (codePoint >= 0x20 && (codePoint < 0x7F || codePoint > 0x9F))
+                    || codePoint == '\t' || codePoint == '\n' || codePoint == '\r';
+            if (keep) {
+                stripped.appendCodePoint(codePoint);
+            }
+        });
+        return stripped.toString();
     }
 }

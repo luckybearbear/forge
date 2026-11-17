@@ -6,9 +6,11 @@ filter → Modulith 事件（event_publication 先登记后投递）→ JPA 异�
 - 访问侧：`ApiAccessLogFilter`（`FilterOrder.ACCESS_LOG_FILTER=-80`，web-starter 的
   CacheRequestBodyFilter 装配 body 缓存前置）——入口计时，链后（finally）快照
   TenantContextHolder/ThreadLocalUserProvider + `ContentCachingRequestWrapper` 缓存体
-  （截断 ≤ `forge.web.access-log.max-body-size`，缺省 8KB）发布 `AccessLogRecorded`
-  （publishEvent 以 TransactionTemplate 包裹——@ApplicationModuleListener 为 AFTER_COMMIT
-  投递，无事务发布直接丢弃；发布点自身无自然事务）
+  （截断 ≤ `forge.web.access-log.max-body-size`，缺省 8KB，剥离 ISO 控制字符——PG text
+  拒绝 U+0000）发布 `AccessLogRecorded`（publishEvent 以 TransactionTemplate 包裹——
+  @ApplicationModuleListener 为 AFTER_COMMIT 投递，无事务发布直接丢弃；发布点自身无自然
+  事务；事件 compact constructor 按列长截断 tenant/user/method/path/exception——超长值
+  会使落库 INSERT 失败、event_publication 卡 incomplete）
 - 错误侧：发布点在 `GlobalExceptionHandler`（web-starter 装配，500 兜底分支发布
   `ErrorLogRecorded`，同样经 TransactionTemplate 包裹；**业务/4xx 分支不发**——常态流量
   不算错误，取舍见类 javadoc；无本 starter 时发布为无害空投）

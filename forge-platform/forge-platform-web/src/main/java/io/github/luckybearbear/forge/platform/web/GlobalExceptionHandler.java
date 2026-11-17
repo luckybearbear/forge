@@ -182,7 +182,7 @@ public class GlobalExceptionHandler {
                 eventPublisher.publishEvent(event); // 无事务基建（standalone）：直接发布
             }
         } catch (Exception publishEx) {
-            log.warn("error log publish skipped: {}", publishEx.getMessage());
+            log.warn("error log publish skipped: {}", publishEx.getMessage(), publishEx);
         }
     }
 

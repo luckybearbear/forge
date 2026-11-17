@@ -3,6 +3,7 @@ package io.github.luckybearbear.forge.audit.flow.controller.app;
 import io.github.luckybearbear.forge.platform.core.BusinessException;
 import io.github.luckybearbear.forge.platform.core.ErrorCodes;
 import io.github.luckybearbear.forge.platform.core.Result;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,6 +21,12 @@ public class AuditProbeController {
     @PostMapping("/audit/echo")
     Result<String> echo(@RequestBody EchoRequest request) {
         return Result.ok(request.name()); // @RequestBody 读取驱动 ContentCachingRequestWrapper 缓存体
+    }
+
+    /** 二进制 body 用例载体：text/plain 1:1 字节读（ISO-8859-1）——0x00 原样进入缓存体与摘要。 */
+    @PostMapping(value = "/audit/raw", consumes = MediaType.TEXT_PLAIN_VALUE)
+    Result<Integer> raw(@RequestBody String body) {
+        return Result.ok(body.length());
     }
 
     @GetMapping("/audit/ping")

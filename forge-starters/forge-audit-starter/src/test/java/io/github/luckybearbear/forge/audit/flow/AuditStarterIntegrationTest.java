@@ -249,4 +249,50 @@ class AuditStarterIntegrationTest extends AbstractIntegrationTest {
                 Integer.class, BusinessException.class.getName());
         assertThat(businessErrors).isZero(); // 常态业务流量不算错误（类 javadoc 取舍）
     }
+
+    /**
+     * 超长 URI（>path 列长 512，Tomcat 允许至 8KB 请求行）：行仍落库且 path 截断——
+     * 未截断会使监听器 INSERT 失败、event_publication 卡 incomplete 重投（Important #2 防御实证）。
+     */
+    @Test
+    void overlongUriPathIsTruncatedAndRowPersisted() {
+        String longPath = "/app-api/" + "x".repeat(600);
+        ResponseEntity<String> response = exchange(HttpMethod.GET, longPath, null, null, null);
+        assertThat(response.getStatusCode().value()).isEqualTo(404); // 无此路由（NoResourceFound，不进错误表）
+
+        String expectedPath = longPath.substring(0, 512); // 事件 compact constructor 截断后的落库值
+        Awaitility.await().atMost(AWAIT).untilAsserted(() -> {
+            List<Map<String, Object>> rows = accessRows(expectedPath);
+            assertThat(rows).isNotEmpty();
+            Map<String, Object> row = rows.get(0);
+            assertThat((String) row.get("path")).hasSize(512);
+            assertThat((String) row.get("path")).startsWith("/app-api/xxx");
+            assertThat(row.get("method")).isEqualTo("GET");
+            assertThat(row.get("result_code")).isEqualTo(404);
+        });
+    }
+
+    /**
+     * 二进制 body（含 0x00/0x01 控制字节）：摘要剥离控制字符后落库——PG text 拒绝 U+0000，
+     * 未剥离会使监听器 INSERT 失败（Important #3 防御实证；text/plain 1:1 字节读入缓存体）。
+     */
+    @Test
+    void binaryBodyDigestStrippedOfControlCharsAndRowPersisted() {
+        byte[] binaryBody = new byte[] {'o', 'k', 0x00, 0x01, 'b', 'i', 'n'};
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.TEXT_PLAIN);
+        ResponseEntity<String> response = rest.exchange(url("/app-api/audit/raw"), HttpMethod.POST,
+                new HttpEntity<>(binaryBody, headers), String.class);
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+
+        Awaitility.await().atMost(AWAIT).untilAsserted(() -> {
+            List<Map<String, Object>> rows = accessRows("/app-api/audit/raw");
+            assertThat(rows).isNotEmpty();
+            String digest = (String) rows.get(0).get("body_digest");
+            assertThat(digest).contains("okbin"); // 控制字节剥离，可见部分邻接保留
+            assertThat(digest.codePoints().noneMatch(cp ->
+                    (cp < 0x20 && cp != '\t' && cp != '\n' && cp != '\r') || (cp >= 0x7F && cp <= 0x9F)))
+                    .as("摘要不得残留任何 ISO 控制字符（PG text 兼容）").isTrue();
+        });
+    }
 }

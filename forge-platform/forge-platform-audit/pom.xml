@@ -24,7 +24,5 @@
          轻量（仅 spring-context/tx 传递，无 DB 栈、不触发任何自动配置）。版本经 forge-bom 的
          spring-modulith-bom 管理 -->
     <dependency><groupId>org.springframework.modulith</groupId><artifactId>spring-modulith-events-api</artifactId></dependency>
-    <!-- tests -->
-    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
   </dependencies>
 </project>
