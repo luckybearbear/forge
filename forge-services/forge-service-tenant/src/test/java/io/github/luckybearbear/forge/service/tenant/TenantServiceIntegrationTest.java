@@ -212,5 +212,10 @@ class TenantServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(tenantPackageService.findByCode("starter-pkg")).isEmpty();
         var reborn = tenantPackageService.create("starter-pkg", "编码复用套餐", null, null);
         assertThat(reborn.id()).isNotEqualTo(pkg.id());
+
+        // 对外按编码查询（控制器路径）：缺失语义在 service 层（FORGE-0404/404）——控制器薄层范式
+        assertThatThrownBy(() -> tenantPackageService.findByCodeRequired("no-such-pkg"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("no-such-pkg");
     }
 }

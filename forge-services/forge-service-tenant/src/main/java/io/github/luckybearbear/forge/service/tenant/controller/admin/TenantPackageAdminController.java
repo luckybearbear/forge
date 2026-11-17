@@ -1,7 +1,5 @@
 package io.github.luckybearbear.forge.service.tenant.controller.admin;
 
-import io.github.luckybearbear.forge.platform.core.BusinessException;
-import io.github.luckybearbear.forge.platform.core.ErrorCodes;
 import io.github.luckybearbear.forge.platform.core.Result;
 import io.github.luckybearbear.forge.service.tenant.app.TenantPackageDTO;
 import io.github.luckybearbear.forge.service.tenant.app.TenantPackageService;
@@ -43,9 +41,7 @@ public class TenantPackageAdminController {
 
     @GetMapping(params = "code")
     public Result<TenantPackageDTO> getByCode(@RequestParam String code) {
-        return Result.ok(tenantPackageService.findByCode(code)
-                .orElseThrow(() -> new BusinessException(ErrorCodes.NOT_FOUND, "套餐不存在: " + code)
-                        .withHttpStatus(404)));
+        return Result.ok(tenantPackageService.findByCodeRequired(code));
     }
 
     @PutMapping("/{id}")

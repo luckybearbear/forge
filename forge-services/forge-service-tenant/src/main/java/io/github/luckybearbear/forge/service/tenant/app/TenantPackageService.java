@@ -42,6 +42,13 @@ public class TenantPackageService {
         return repository.findByCode(code).map(this::toDto);
     }
 
+    /** 按编码查询（缺失→FORGE-0404/404）：对外（控制器）用——缺失语义在 service 层，控制器只做 Result 包装。 */
+    @Transactional(readOnly = true)
+    public TenantPackageDTO findByCodeRequired(String code) {
+        return repository.findByCode(code).map(this::toDto)
+                .orElseThrow(() -> new BusinessException(ErrorCodes.NOT_FOUND, "套餐不存在: " + code).withHttpStatus(404));
+    }
+
     /** 部分更新：name/maxUsers/remark 传 null 即不改该字段。 */
     @Transactional
     public TenantPackageDTO update(String id, String name, Integer maxUsers, String remark) {
