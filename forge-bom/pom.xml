@@ -69,6 +69,7 @@
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-security-starter</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-service-tenant</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-service-identity</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-service-organization</artifactId><version>${revision}</version></dependency>
     </dependencies>
   </dependencyManagement>
 
