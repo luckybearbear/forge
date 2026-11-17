@@ -48,12 +48,28 @@ public class ForgeApiPrefixRequestMappingHandlerMapping extends RequestMappingHa
         }
         // 包首尾补点后再 contains：同时匹配 controller.app 顶层包（无尾点）与 controller.app.v1 等子包。
         String padded = "." + handlerType.getPackageName() + ".";
+        String prefix = null;
         if (padded.contains(ADMIN_PACKAGE)) {
-            return properties.adminPrefix();
+            prefix = properties.adminPrefix();
+        } else if (padded.contains(APP_PACKAGE)) {
+            prefix = properties.appPrefix();
         }
-        if (padded.contains(APP_PACKAGE)) {
-            return properties.appPrefix();
+        // 使用点归一：自定义值（"app-api"、"/app-api/" 等）不产出畸形 pattern。
+        return prefix == null ? null : normalizePrefix(prefix);
+    }
+
+    /**
+     * 前缀斜杠归一（Task 7 遗留兑现）：补前导 {@code /}、去全部尾 {@code /}——
+     * {@code app-api} / {@code /app-api/} 一律归一为 {@code /app-api}；空白串原样返回（视为不加前缀）。
+     */
+    static String normalizePrefix(String prefix) {
+        String normalized = prefix.strip();
+        if (normalized.isEmpty()) {
+            return normalized;
         }
-        return null;
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        return normalized.replaceAll("/+$", "");
     }
 }

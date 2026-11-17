@@ -25,7 +25,8 @@
 
 2. 常驻 PostgreSQL（本机已占 5432 的实例）：建独立库 `forge_demo` 后以环境变量指向，
    例如（仅示例，勿写入任何配置文件）：
-   `FORGE_DB_URL=jdbc:postgresql://localhost:5432/forge_demo FORGE_DB_USERNAME=postgres FORGE_DB_PASSWORD=lbb@pg18`
+   `FORGE_DB_URL=jdbc:postgresql://localhost:5432/forge_demo FORGE_DB_USERNAME=postgres FORGE_DB_PASSWORD=change-me`
+   （`change-me` 替换为本机实例真实口令；真实凭据不进版本库）
 
 体验流（controller 迁入 `controller/app` 包 → platform-web 双端前缀，app 端统一 `/app-api`）：
 `POST /app-api/molds` → `GET /app-api/molds/{id}` → `POST /app-api/molds/{id}/repairs` →
