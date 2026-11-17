@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.github.luckybearbear</groupId>
+    <artifactId>forge-starters</artifactId>
+    <version>${revision}</version>
+  </parent>
+  <artifactId>forge-audit-starter</artifactId>
+  <name>Forge :: Starter :: Audit</name>
+  <dependencies>
+    <!-- 事件类型/全局表实体/监听器（spec §6.6 载体，本 starter 负责装配与迁移） -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-audit</artifactId></dependency>
+    <!-- Modulith 事件 JDBC 登记表（event_publication 先登记后投递）+ JPA/Flyway 栈：
+         审计落库与事件登记复用同一数据基建 -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-data-starter</artifactId></dependency>
+    <!-- web 上下文：ApiAccessLogFilter 的 servlet 栈 + forge.web.access-log.* 属性
+         （CacheRequestBodyFilter 在其中装配——body 缓存是访问日志摘要的前置）。
+         注：本 starter 为组合型 starter（打破 starter 间互不依赖约定，Task 7 裁定）：
+         审计 = filter(web) + 事件登记(data) + 落库(JPA) 的横切组合，拆开引入无意义 -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-spring-boot-starter</artifactId></dependency>
+    <!-- CurrentUser/Tenant 上下文读取（发布时刻快照入事件 payload） -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-security</artifactId></dependency>
+    <!-- tests -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.awaitility</groupId><artifactId>awaitility</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>

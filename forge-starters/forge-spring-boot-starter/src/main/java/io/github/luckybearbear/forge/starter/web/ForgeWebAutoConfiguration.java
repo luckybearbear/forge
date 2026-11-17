@@ -12,7 +12,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.webmvc.autoconfigure.WebMvcRegistrations;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 /**
@@ -57,10 +60,17 @@ public class ForgeWebAutoConfiguration {
         };
     }
 
+    /**
+     * 全局异常处理：注入容器 {@link ApplicationEventPublisher} 与事务管理器——500 兜底分支发布
+     * {@code ErrorLogRecorded}（错误侧审计，spec §6.6；publishEvent 以 TransactionTemplate
+     * 包裹满足 AFTER_COMMIT 投递。落库监听器在 forge-audit-starter，无监听器时发布无害——
+     * 事件无订阅者即空投；纯 web 应用无事务基建时 ObjectProvider 取空、直接发布）。
+     */
     @Bean
     @ConditionalOnMissingBean
-    public GlobalExceptionHandler globalExceptionHandler() {
-        return new GlobalExceptionHandler();
+    public GlobalExceptionHandler globalExceptionHandler(ApplicationEventPublisher eventPublisher,
+            ObjectProvider<PlatformTransactionManager> transactionManagerProvider) {
+        return new GlobalExceptionHandler(eventPublisher, transactionManagerProvider.getIfAvailable());
     }
 
     /** Long→String：JacksonModule Bean 由 Boot Jackson 自动配置统一收集（见类 javadoc）。 */

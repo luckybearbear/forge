@@ -1,14 +1,22 @@
 package io.github.luckybearbear.forge.platform.web;
 
+import io.github.luckybearbear.forge.platform.audit.ErrorLogRecorded;
 import io.github.luckybearbear.forge.platform.core.BusinessException;
 import io.github.luckybearbear.forge.platform.core.ErrorCodes;
 import io.github.luckybearbear.forge.platform.core.Result;
+import io.github.luckybearbear.forge.platform.security.CurrentUser;
+import io.github.luckybearbear.forge.platform.security.TenantContextHolder;
+import io.github.luckybearbear.forge.platform.security.ThreadLocalUserProvider;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ValidationException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -24,16 +32,47 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 全局异常处理。HTTP 状态保留语义（默认按异常类别 4xx/5xx；BusinessException 默认 200 可携带覆盖），
  * 业务语义在 Result.code。@Order(0) 抢占三方 advice。
+ *
+ * <p><b>错误侧审计（spec §6.6，2b Task 7 兑现）</b>：仅 500 兜底分支（{@code handleUnknown}）
+ * 发布 {@link ErrorLogRecorded}——4xx 家族与业务分支<b>不发</b>：业务异常（BusinessException）
+ * 是常态语义流量，记入错误表纯属噪音；4xx 是调用方错误而非服务缺陷；两者的可观测性已由
+ * api_access_log.result_code 覆盖。发布经可选注入的 {@link ApplicationEventPublisher}：
+ * 无发布者（standalone 单测装配 {@code new GlobalExceptionHandler()}）时静默跳过；发布失败
+ * （审计不可用）仅 warn 不影响响应语义——审计绝不反噬请求处理。
+ *
+ * <p><b>发布事务</b>：异常处理器内通常无活跃事务，而消费方 ErrorLogListener 是
+ * AFTER_COMMIT 投递（无事务发布直接丢弃）——publishEvent 以 TransactionTemplate 包裹
+ * （事务管理器可选注入：standalone 装配无管理器时直接发布，无 AFTER_COMMIT 监听器场景无害）。
  */
 @RestControllerAdvice
 @Order(0)
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /** 堆栈摘要截断上限（dispatch 裁定：printStackTrace 前 2000 字符）。 */
+    private static final int STACK_DIGEST_LIMIT = 2000;
+
+    private final ApplicationEventPublisher eventPublisher;
+    private final PlatformTransactionManager transactionManager;
+
+    /** standalone 装配（MockMvc 单测/无容器场景）：无发布者，兜底分支只打日志不发事件。 */
+    public GlobalExceptionHandler() {
+        this(null, null);
+    }
+
+    /** starter 装配（ForgeWebAutoConfiguration）：注入容器发布器与事务管理器，兜底分支发布 ErrorLogRecorded。 */
+    public GlobalExceptionHandler(ApplicationEventPublisher eventPublisher,
+            PlatformTransactionManager transactionManager) {
+        this.eventPublisher = eventPublisher;
+        this.transactionManager = transactionManager;
+    }
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<Result<Void>> handleBusiness(BusinessException ex) {
@@ -117,7 +156,41 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Result<Void>> handleUnknown(Exception ex) {
         log.error("unhandled exception", ex);
+        publishErrorLog(ex);
         return ResponseEntity.status(500).body(Result.error(ErrorCodes.INTERNAL_SERVER_ERROR));
+    }
+
+    /**
+     * 错误侧审计发布（取舍与事务语义见类 javadoc）：请求线程此刻租户/用户上下文仍有效
+     * （TokenAuthFilter 的 finally 清理在 filter 链外层回退后才执行），发布时刻快照入
+     * payload——异步监听线程不继承 TTL 上下文。
+     */
+    private void publishErrorLog(Exception ex) {
+        if (eventPublisher == null) {
+            return; // standalone 装配无发布者：跳过（不炸，见构造器 javadoc）
+        }
+        try {
+            String tenantId = TenantContextHolder.getTenantId().orElse(null);
+            // ThreadLocalUserProvider 无静态读出口：无状态实例读同一 TTL 持有器（TokenAuthFilter 写入侧）
+            String userId = new ThreadLocalUserProvider().currentUser().map(CurrentUser::userId).orElse(null);
+            ErrorLogRecorded event = new ErrorLogRecorded(tenantId, userId,
+                    ex.getClass().getName(), ex.getMessage(), stackDigestOf(ex), Instant.now());
+            if (transactionManager != null) {
+                new TransactionTemplate(transactionManager)
+                        .executeWithoutResult(status -> eventPublisher.publishEvent(event));
+            } else {
+                eventPublisher.publishEvent(event); // 无事务基建（standalone）：直接发布
+            }
+        } catch (Exception publishEx) {
+            log.warn("error log publish skipped: {}", publishEx.getMessage());
+        }
+    }
+
+    private static String stackDigestOf(Exception ex) {
+        StringWriter stringWriter = new StringWriter();
+        ex.printStackTrace(new PrintWriter(stringWriter));
+        String stack = stringWriter.toString();
+        return stack.length() > STACK_DIGEST_LIMIT ? stack.substring(0, STACK_DIGEST_LIMIT) : stack;
     }
 
     private Map<String, String> fieldErrors(BindException ex) {

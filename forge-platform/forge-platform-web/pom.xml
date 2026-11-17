@@ -15,6 +15,16 @@
       <groupId>io.github.luckybearbear</groupId>
       <artifactId>forge-platform-core</artifactId>
     </dependency>
+    <!-- ErrorLogRecorded 事件类型（错误侧审计发布，spec §6.6）——platform 内横向依赖 -->
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-platform-audit</artifactId>
+    </dependency>
+    <!-- TenantContextHolder/ThreadLocalUserProvider：异常处理时刻快照租户/用户入事件 payload -->
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-platform-security</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-webmvc</artifactId>

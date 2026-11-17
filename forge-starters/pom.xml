@@ -16,5 +16,6 @@
     <module>forge-data-starter</module>
     <module>forge-security-starter</module>
     <module>forge-cache-starter</module>
+    <module>forge-audit-starter</module>
   </modules>
 </project>

@@ -10,4 +10,21 @@
   </parent>
   <artifactId>forge-platform-audit</artifactId>
   <name>Forge :: Platform :: Audit</name>
+  <dependencies>
+    <!-- 审计基类 AbstractAuditableEntity + JPA 全栈（jakarta.persistence/spring-data-jpa/Hibernate）。
+         optional：运行时栈由 forge-audit-starter 组装（经 forge-data-starter 引入）——本模块被
+         platform-web 编译引用（GlobalExceptionHandler 发布 ErrorLogRecorded），非 optional 会让
+         JPA 全栈随 web 基线流入所有应用，违反 spec §6.7"web 基线不含 DB" -->
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-platform-data</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <!-- @ApplicationModuleListener（事务提交后异步投递 + event_publication 登记语义的注解载体）：
+         轻量（仅 spring-context/tx 传递，无 DB 栈、不触发任何自动配置）。版本经 forge-bom 的
+         spring-modulith-bom 管理 -->
+    <dependency><groupId>org.springframework.modulith</groupId><artifactId>spring-modulith-events-api</artifactId></dependency>
+    <!-- tests -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+  </dependencies>
 </project>
