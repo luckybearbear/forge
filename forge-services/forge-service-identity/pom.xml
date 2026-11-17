@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.github.luckybearbear</groupId>
+    <artifactId>forge-services</artifactId>
+    <version>${revision}</version>
+  </parent>
+  <artifactId>forge-service-identity</artifactId>
+  <name>Forge :: Service :: Identity</name>
+  <description>身份服务：双端登录/登出/改密 + 租户用户管理（服务=自动配置库形态，照抄 service-tenant 范式）。</description>
+  <dependencies>
+    <!-- 服务=自动配置库（范式同 service-tenant）：data-starter 供 JPA/审计/软删/Flyway 基建，
+         spring-boot-starter 供 web/异常/前缀路由 -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-data-starter</artifactId></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-spring-boot-starter</artifactId></dependency>
+    <!-- 登录编排需要 TokenStore/PasswordHasher/TokenGrant（TokenAuthFilter 由消费方 Web 环境装配）。
+         starter 带 spring-security：方法安全注解（@PreAuthorize）与 Redis TokenStore 随之可用 -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-security-starter</artifactId></dependency>
+    <!-- 契约消费：tenant（登录侧租户校验 TenantQueryService）、identity（UserDTO/事件/错误码）、
+         authorization（登录权限集 UserPermissionsQuery——ObjectProvider 可选装配） -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-tenant</artifactId></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-identity</artifactId></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-authorization</artifactId></dependency>
+    <!-- 主代码直接使用 Result/BusinessException/TenantContextHolder（platform-security 经
+         security-starter 传递，此处显式声明主代码直接使用的两件，防克隆模块时误判可用性） -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-core</artifactId></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-security</artifactId></dependency>
+    <!-- tests -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-test</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>

@@ -13,5 +13,6 @@
   <name>Forge :: Services</name>
   <modules>
     <module>forge-service-tenant</module>
+    <module>forge-service-identity</module>
   </modules>
 </project>

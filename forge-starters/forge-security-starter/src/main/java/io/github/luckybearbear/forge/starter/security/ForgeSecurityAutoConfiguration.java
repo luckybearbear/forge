@@ -3,6 +3,7 @@ package io.github.luckybearbear.forge.starter.security;
 import io.github.luckybearbear.forge.platform.security.TenantIgnore;
 import io.github.luckybearbear.forge.platform.security.auth.ForgeSecurityResponses;
 import io.github.luckybearbear.forge.platform.security.auth.TokenAuthFilter;
+import io.github.luckybearbear.forge.platform.security.password.PasswordHasher;
 import io.github.luckybearbear.forge.platform.security.token.TokenStore;
 import org.aspectj.lang.annotation.Aspect;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -99,6 +100,16 @@ public class ForgeSecurityAutoConfiguration {
         TenantIgnoreAspect forgeTenantIgnoreAspect() {
             return new TenantIgnoreAspect();
         }
+    }
+
+    /**
+     * 密码哈希器（DelegatingPasswordEncoder，bcrypt 默认）：service-identity 登录/改密等经
+     * 构造注入消费；@ConditionalOnMissingBean 让位自定义实现（哈希算法替换治理点）。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    PasswordHasher forgePasswordHasher() {
+        return new PasswordHasher();
     }
 
     @Configuration(proxyBeanMethods = false)
