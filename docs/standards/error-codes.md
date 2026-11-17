@@ -10,3 +10,12 @@
 | MAINT- | 维修域（Demo） | demo maintenance 模块 `MaintenanceErrorCodes` | 启用（Demo） |
 
 新增前缀在此登记后方可使用。平台预置码见 `ErrorCodes` javadoc（FORGE-0400/0401/0403/0404/0405/0415/0423/0429/0500/0501）。
+
+预置码启用状态（Phase 2a 起）：
+
+- **FORGE-0401（未认证）/ FORGE-0403（无权限）：已启用**——forge-security-starter 的默认
+  SecurityFilterChain 对未认证/无权限请求分别输出 401/403 + 统一 `Result`（原 Phase 1 预留码转正）。
+- **FORGE-0423（请求冲突）：已启用**——platform-web 全局异常处理将乐观锁冲突
+  （ObjectOptimisticLockingFailureException）映射为 409 + FORGE-0423。
+- 其余预置码（0400/0404/0405/0415/0500/0501）已由 platform-web 全局异常处理器按异常类型输出；
+  FORGE-0429（限流）仍为预留，随限流能力启用。
