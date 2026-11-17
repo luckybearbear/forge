@@ -68,8 +68,12 @@ public class DemoDataSeeder implements ApplicationRunner {
     static final String VIEWER_PASSWORD = "Viewer@123";
     static final String VIEWER_ROLE_CODE = "VIEWER";
 
-    /** 权限字典 seed 固定 id（service-authorization V202611181300）：mold:read。 */
-    private static final String MOLD_READ_PERMISSION_ID = "0194b480-0000-7000-8000-000000000005";
+    /**
+     * 权限字典 seed 固定 id（service-authorization V202611181300）：mold:read。包私有共享
+     * （评审 Minor-6）：DemoAuthFlowIntegrationTest 引用同一常量（场景 5 授权变更/基线恢复用），
+     * 单一来源防双份硬编码漂移。
+     */
+    static final String MOLD_READ_PERMISSION_ID = "0194b480-0000-7000-8000-000000000005";
 
     /** TenantCreatedListener 异步建 ADMIN 角色的等待上限（轮询间隔 200ms）。 */
     private static final Duration ROLE_WAIT = Duration.ofSeconds(10);

@@ -57,8 +57,11 @@ class DemoAuthFlowIntegrationTest extends AbstractIntegrationTest {
 
     private static final Duration AWAIT = Duration.ofSeconds(10);
 
-    /** 权限字典 seed 固定 id（service-authorization V202611181300）。 */
-    private static final String MOLD_READ_PERMISSION_ID = "0194b480-0000-7000-8000-000000000005";
+    /**
+     * 权限字典 seed 固定 id（service-authorization V202611181300）。mold:read 与 seeder 共享同一
+     * 常量（{@link DemoDataSeeder#MOLD_READ_PERMISSION_ID}，评审 Minor-6：单一来源防双份硬编码漂移）；
+     * mold:create 仅本测试使用，就地声明。
+     */
     private static final String MOLD_CREATE_PERMISSION_ID = "0194b480-0000-7000-8000-000000000004";
 
     @LocalServerPort
@@ -133,6 +136,11 @@ class DemoAuthFlowIntegrationTest extends AbstractIntegrationTest {
      *       （auth:perm:{userId}），重登经 UserPermissionsQuery 重新装配到含 mold:create 的集合
      *       ——缓存即时失效经新登录验证（未 evict 则重登仍命中陈旧快照 → 403）。</li>
      * </ul>
+     *
+     * <p><b>基线恢复（评审 Important-1）</b>：本场景对 VIEWER 的授权变更是污染性写——场景 4 与
+     * 本场景开头的「viewer POST → 403」前置依赖 VIEWER 缺 mold:create 的种子基线。finally 段
+     * PUT 回 [mold:read] 恢复基线（方法序无关化：任何执行序下其他场景都不应看到本场景的残留）；
+     * 恢复失败仅在主体断言已通过时才报错（不掩盖主体失败——finally 抛异常会替换原始异常）。
      */
     @Test
     void permissionGrantTakesEffectOnReLoginOnly() {
@@ -143,23 +151,37 @@ class DemoAuthFlowIntegrationTest extends AbstractIntegrationTest {
 
         String adminToken = login("t-mold", "mold-admin", "Admin@123");
         String viewerRoleId = roleIdByCode(adminToken, "VIEWER");
-        ResponseEntity<String> grant = rest.exchange(url("/app-api/roles/" + viewerRoleId + "/permissions"),
-                HttpMethod.PUT, json("""
-                        {"permissionIds":["%s","%s"]}"""
-                        .formatted(MOLD_READ_PERMISSION_ID, MOLD_CREATE_PERMISSION_ID), adminToken),
-                String.class);
-        assertThat(grant.getStatusCode().value()).isEqualTo(200);
+        boolean bodyCompleted = false;
+        try {
+            ResponseEntity<String> grant = rest.exchange(url("/app-api/roles/" + viewerRoleId + "/permissions"),
+                    HttpMethod.PUT, json("""
+                            {"permissionIds":["%s","%s"]}"""
+                            .formatted(DemoDataSeeder.MOLD_READ_PERMISSION_ID, MOLD_CREATE_PERMISSION_ID),
+                            adminToken),
+                    String.class);
+            assertThat(grant.getStatusCode().value()).isEqualTo(200);
 
-        // 旧 token：TokenGrant 快照冻结 → 依旧 403（要演示的语义，非缺陷）
-        ResponseEntity<String> staleRetry = rest.exchange(url("/app-api/molds"), HttpMethod.POST,
-                json("{\"name\":\"旧token重试\",\"specification\":\"一腔\"}", staleToken), String.class);
-        assertThat(staleRetry.getStatusCode().value()).isEqualTo(403);
+            // 旧 token：TokenGrant 快照冻结 → 依旧 403（要演示的语义，非缺陷）
+            ResponseEntity<String> staleRetry = rest.exchange(url("/app-api/molds"), HttpMethod.POST,
+                    json("{\"name\":\"旧token重试\",\"specification\":\"一腔\"}", staleToken), String.class);
+            assertThat(staleRetry.getStatusCode().value()).isEqualTo(403);
 
-        // 重新登录：快照缓存已 evict → 新 token 携带 mold:create → 200
-        String refreshedToken = login("t-mold", "mold-viewer", "Viewer@123");
-        ResponseEntity<String> after = rest.exchange(url("/app-api/molds"), HttpMethod.POST,
-                json("{\"name\":\"授权后\",\"specification\":\"一腔\"}", refreshedToken), String.class);
-        assertThat(after.getStatusCode().value()).isEqualTo(200);
+            // 重新登录：快照缓存已 evict → 新 token 携带 mold:create → 200
+            String refreshedToken = login("t-mold", "mold-viewer", "Viewer@123");
+            ResponseEntity<String> after = rest.exchange(url("/app-api/molds"), HttpMethod.POST,
+                    json("{\"name\":\"授权后\",\"specification\":\"一腔\"}", refreshedToken), String.class);
+            assertThat(after.getStatusCode().value()).isEqualTo(200);
+            bodyCompleted = true;
+        } finally {
+            ResponseEntity<String> restore = rest.exchange(url("/app-api/roles/" + viewerRoleId + "/permissions"),
+                    HttpMethod.PUT, json("""
+                            {"permissionIds":["%s"]}"""
+                            .formatted(DemoDataSeeder.MOLD_READ_PERMISSION_ID), adminToken),
+                    String.class);
+            if (bodyCompleted && restore.getStatusCode().value() != 200) {
+                throw new AssertionError("VIEWER baseline restore failed: " + restore.getBody());
+            }
+        }
     }
 
     // ---- 场景 6：logout 吊销当前 token → 旧 token 再用 401 ----
@@ -179,23 +201,34 @@ class DemoAuthFlowIntegrationTest extends AbstractIntegrationTest {
 
     // ---- 场景 7：上述流量入 api_access_log；未预期异常入 api_error_log ----
 
+    /**
+     * 审计落表断言以<b>唯一标记行</b>关联（评审 Minor-5：不做计数断言——计数无法证明是"本场景
+     * 这次请求"落的行）：nanoTime 标记同时进入 POST 请求体（→ body_digest 列）与 GET 路径段
+     * （→ path 列），断言携带该标记的行存在即唯一关联。401 不入访问表（日志过滤器在安全链后）。
+     */
     @Test
     void authenticatedTrafficIsAudited() {
-        // 业务流量：登录 + 建/查模具（404 业务分支也入访问表）
         String adminToken = login("t-mold", "mold-admin", "Admin@123");
-        rest.exchange(url("/app-api/molds/none"), HttpMethod.GET, bearer(adminToken), String.class);
+        String marker = "authflow-audit-" + System.nanoTime();
+
+        // 带体 POST（200，标记进 body_digest）+ 唯一路径 GET（业务 404，标记进 path）
+        ResponseEntity<String> created = rest.exchange(url("/app-api/molds"), HttpMethod.POST,
+                json("{\"name\":\"" + marker + "\",\"specification\":\"两腔\"}", adminToken), String.class);
+        assertThat(created.getStatusCode().value()).isEqualTo(200);
+        rest.exchange(url("/app-api/molds/" + marker), HttpMethod.GET, bearer(adminToken), String.class);
 
         Awaitility.await().atMost(AWAIT).untilAsserted(() -> {
-            Integer moldRows = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM api_access_log WHERE path LIKE '/app-api/molds/%'",
-                    Integer.class);
-            Integer loginRows = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM api_access_log WHERE path = '/app-api/auth/login' "
-                            + "AND result_code = 200",
-                    Integer.class);
-            assertThat(moldRows).as("业务端点访问行（401 不经访问日志过滤器——其在安全链之后）")
-                    .isGreaterThan(0);
-            assertThat(loginRows).as("登录端点访问行").isGreaterThan(0);
+            List<Map<String, Object>> postRows = jdbcTemplate.queryForList(
+                    "SELECT * FROM api_access_log WHERE path = '/app-api/molds' AND body_digest LIKE ?",
+                    "%" + marker + "%");
+            assertThat(postRows).as("本次带体 POST 的访问行（body_digest 含唯一标记）").isNotEmpty();
+            assertThat(postRows.get(0).get("result_code")).isEqualTo(200);
+            assertThat(postRows.get(0).get("tenant_id")).isNotNull(); // TokenAuthFilter 填充的上下文快照
+
+            List<Map<String, Object>> getRows = jdbcTemplate.queryForList(
+                    "SELECT * FROM api_access_log WHERE path = ?", "/app-api/molds/" + marker);
+            assertThat(getRows).as("本次唯一路径 GET 的访问行").isNotEmpty();
+            assertThat(getRows.get(0).get("result_code")).isEqualTo(404); // 业务 404 分支同样入表
         });
 
         // 未预期异常：测试专用端点抛 IllegalStateException → 500 兜底 → api_error_log 行

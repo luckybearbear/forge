@@ -20,6 +20,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingRequestWrapper;
+import org.springframework.web.util.WebUtils;
 
 /**
  * API 访问日志过滤器（spec §6.6）：入口计时 → 链后（finally 段）取响应状态码/请求体摘要/
@@ -35,8 +36,10 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
  * TransactionTemplate 包裹（REQUIRED 空事务）：event_publication 登记随其原子提交，
  * 提交后异步投递。
  *
- * <p><b>body 摘要</b>：仅当 request 为 {@link ContentCachingRequestWrapper}（web-starter 的
- * CacheRequestBodyFilter 装配；被 {@code exclude-urls} 排除或自定义栈未包装时为 null）；
+     * <p><b>body 摘要</b>：仅当请求链上可寻得 {@link ContentCachingRequestWrapper}（web-starter 的
+     * CacheRequestBodyFilter 装配；经 {@code WebUtils.getNativeRequest} 沿 wrapper 链取——安全链的
+     * FirewalledRequest 会再裹一层，instanceof 判定在 security 组装下恒 false）；被
+     * {@code exclude-urls} 排除或自定义栈未包装时为 null）；
  * 缓存体本身已被 wrapper 的 contentCacheLimit 截断，此处再按 max-body-size 防御性截断，
  * 转 UTF-8 串后<b>剥离 ISO 控制字符</b>（保留 \t/\n/\r 与全部可见字符）——PG text 拒绝
  * U+0000，二进制 body（protobuf/压缩流）原样入库会使监听器 INSERT 失败、event_publication
@@ -88,7 +91,13 @@ public class ApiAccessLogFilter extends OncePerRequestFilter {
     }
 
     private String bodyDigest(HttpServletRequest request) {
-        if (!(request instanceof ContentCachingRequestWrapper wrapper)) {
+        // 安全链在场时（FilterChainProxy 的 HttpFirewall）请求被再裹一层 FirewalledRequest——
+        // instanceof 判定恒 false、body_digest 恒 null（demo 四服务+security+audit 全链组装实证，
+        // audit-starter 自测因类路径无 security 未覆盖该形态）；经 WebUtils 沿 ServletRequestWrapper
+        // 链取原生 ContentCachingRequestWrapper（无嵌套时即直接命中）。
+        ContentCachingRequestWrapper wrapper =
+                WebUtils.getNativeRequest(request, ContentCachingRequestWrapper.class);
+        if (wrapper == null) {
             return null; // 无缓存 wrapper（exclude-urls 排除/自定义栈未包装）：不记体
         }
         byte[] cached = wrapper.getContentAsByteArray();

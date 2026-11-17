@@ -165,9 +165,11 @@ public class GlobalExceptionHandler {
      * 方法安全拒绝（@PreAuthorize 越权）<b>必须</b>穿透本 advice：若被下面的
      * {@code @ExceptionHandler(Exception.class)} 兜底接住会误报 500/FORGE-0500。此处原样重抛——
      * Spring MVC 对 "@ExceptionHandler 方法自身抛出" 的处理是放弃解析并把原异常继续上抛，交还
-     * security 链的 {@code ExceptionTranslationFilter}：已认证越权 → accessDeniedHandler →
-     * 403 FORGE-0403 统一体（Spring Security 官方推荐模式，demo Task 8 集成实证：无本分支时
-     * mold-viewer 越权建模具得到 500）。匿名场景本分支不可达（进不了 handler）。
+     * security 链的 {@code ExceptionTranslationFilter} 按认证态路由：已认证越权 →
+     * accessDeniedHandler → 403 FORGE-0403 统一体；匿名到达（permitAll 端点上的方法安全拒绝
+     * ——请求进了 handler 但无认证态）→ entryPoint → 401 FORGE-0401。其余未认证请求在链级
+     * AuthorizationFilter 已拦（401），到不了 handler。Spring Security 官方推荐模式，demo
+     * Task 8 集成实证：无本分支时 mold-viewer 越权建模具得到 500。
      */
     @ExceptionHandler(AccessDeniedException.class)
     public void handleAccessDenied(AccessDeniedException ex) throws AccessDeniedException {
