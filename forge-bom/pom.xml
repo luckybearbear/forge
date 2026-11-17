@@ -67,6 +67,7 @@
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-spring-boot-starter</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-data-starter</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-security-starter</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-service-tenant</artifactId><version>${revision}</version></dependency>
     </dependencies>
   </dependencyManagement>
 

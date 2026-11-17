@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.github.luckybearbear</groupId>
+    <artifactId>forge-services</artifactId>
+    <version>${revision}</version>
+  </parent>
+  <artifactId>forge-service-tenant</artifactId>
+  <name>Forge :: Service :: Tenant</name>
+  <description>租户/套餐服务（Phase 2b 服务=自动配置库形态的范式样板）。</description>
+  <dependencies>
+    <!-- 服务=自动配置库：data-starter 供 JPA/审计/软删/Flyway 基建，spring-boot-starter 供 web/异常/前缀路由；
+         platform-core 经 contract-tenant 传递（契约已依赖） -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-data-starter</artifactId></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-spring-boot-starter</artifactId></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-tenant</artifactId></dependency>
+    <!-- tests -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-test</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>
