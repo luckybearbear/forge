@@ -13,5 +13,6 @@
   <name>Forge :: Starters</name>
   <modules>
     <module>forge-spring-boot-starter</module>
+    <module>forge-data-starter</module>
   </modules>
 </project>

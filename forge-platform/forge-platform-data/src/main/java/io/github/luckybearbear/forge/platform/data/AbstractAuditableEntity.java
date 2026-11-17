@@ -9,19 +9,28 @@ import jakarta.persistence.MappedSuperclass;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Version;
 import java.time.Instant;
-import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.annotations.SoftDelete;
 import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-/** JPA 审计基线（Phase 2 spec §6.3）：UUIDv7 主键自动赋值、乐观锁、审计、软删除。 */
+/**
+ * JPA 审计基线（Phase 2 spec §6.3）：UUIDv7 主键自动赋值、乐观锁、审计、软删除。
+ *
+ * <p>软删除最终机制（Task 9 spike 实证后定稿）：Hibernate 7 原生**类级**
+ * {@code @SoftDelete(columnName = "deleted")}——remove 自动改写为 {@code UPDATE ... SET deleted = true}，
+ * 所有加载/查询自动过滤 {@code deleted = false}。类级注解经 EntityBinder.extract 遍历
+ * {@code @MappedSuperclass} 链被子类实体继承；原 {@code @SQLDelete}/{@code @SQLRestriction} 方案废弃：
+ * {@code @SQLDelete} 在基类上不被读取（bindCustomSql 不遍历基类，spike 实证为物理 DELETE 假绿），
+ * 且 {@code {h-table}} 占位符在 hibernate-core 7.4.13 全 jar 0 命中；字段级 @SoftDelete 在
+ * 7.4.13 绑定侧无处理（仅类级/集合级），故软删除列由 Hibernate 独占管理、不映射为实体属性
+ * （{@code deleted} 字段与访问器随之移除）。
+ */
 @MappedSuperclass
+@SoftDelete(columnName = "deleted")
 @EntityListeners(AuditingEntityListener.class)
-@SQLRestriction("deleted = false")
-@SQLDelete(sql = "UPDATE {h-table} SET deleted = true WHERE id = ?")
 public abstract class AbstractAuditableEntity {
 
     private static final IdGenerator ID_GENERATOR = new UuidV7Generator();
@@ -49,9 +58,6 @@ public abstract class AbstractAuditableEntity {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
-    @Column(name = "deleted", nullable = false)
-    private Boolean deleted = false;
-
     @PrePersist
     protected void assignId() {
         if (id == null) {
@@ -71,6 +77,4 @@ public abstract class AbstractAuditableEntity {
     public void setUpdatedBy(String updatedBy) { this.updatedBy = updatedBy; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
-    public Boolean getDeleted() { return deleted; }
-    public void setDeleted(Boolean deleted) { this.deleted = deleted; }
 }

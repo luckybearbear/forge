@@ -20,10 +20,14 @@ class AbstractAuditableEntityTest {
         assertThat(annotationOn("createdAt", CreatedDate.class)).isNotNull();
         assertThat(annotationOn("updatedBy", LastModifiedBy.class)).isNotNull();
         assertThat(annotationOn("updatedAt", LastModifiedDate.class)).isNotNull();
-        assertThat(annotationOn("deleted", org.hibernate.annotations.SoftDelete.class) != null
-                || AbstractAuditableEntity.class.isAnnotationPresent(org.hibernate.annotations.SQLRestriction.class))
-                .as("soft delete via @SQLRestriction on base class")
+        // 软删除最终机制（Task 9 spike 定稿）：类级 @SoftDelete——字段级在 hibernate-core 7.4.13
+        // 绑定侧无处理（EntityBinder 仅类级 extract 且遍历 MappedSuperclass），deleted 列由
+        // Hibernate 独占管理、不映射为实体属性；断言随机制微调，语义不降级
+        assertThat(AbstractAuditableEntity.class.isAnnotationPresent(org.hibernate.annotations.SoftDelete.class))
+                .as("soft delete via class-level @SoftDelete on base class")
                 .isTrue();
+        assertThat(AbstractAuditableEntity.class.getAnnotation(org.hibernate.annotations.SoftDelete.class).columnName())
+                .isEqualTo("deleted");
         assertThat(annotationOn("tenantId", org.hibernate.annotations.TenantId.class))
                 .as("tenantId only on AbstractTenantEntity")
                 .isNull(); // 本类无租户字段
