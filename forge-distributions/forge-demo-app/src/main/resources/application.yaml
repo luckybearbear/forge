@@ -12,6 +12,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate # 表结构唯一权威是 Flyway，JPA 只校验映射
+    open-in-view: false # OSIV 请求级会话在租户上下文填充前开启——判别式解析为平台租户 "0"（租户表
+                        # 恒空）；Boot 4 + Hibernate 7.4 实证 identity 登录链的 REQUIRES_NEW 新会话不足以
+                        # 恢复正确判别式（appLogin 恒 IDENT-0401，关 OSIV 即恢复），认证全链路（Task 8）
+                        # 要求会话一律在 setTenantId 之后开启。demo 实体无跨层懒加载，无 OSIV 依赖。
   modulith:
     events:
       jdbc:
@@ -22,5 +26,5 @@ server:
 forge:
   openapi:
     title: Forge Demo API
-    description: 模块化单体演示：mold + maintenance（契约 + 事件 + 连库租户隔离）
+    description: 模块化单体演示：mold + maintenance（契约 + 事件 + 连库租户隔离 + 认证/权限/审计全链路）
     version: 1.0.0-SNAPSHOT

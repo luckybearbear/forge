@@ -20,6 +20,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.ResponseEntity;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -158,6 +159,19 @@ public class GlobalExceptionHandler {
         log.error("unhandled exception", ex);
         publishErrorLog(ex);
         return ResponseEntity.status(500).body(Result.error(ErrorCodes.INTERNAL_SERVER_ERROR));
+    }
+
+    /**
+     * 方法安全拒绝（@PreAuthorize 越权）<b>必须</b>穿透本 advice：若被下面的
+     * {@code @ExceptionHandler(Exception.class)} 兜底接住会误报 500/FORGE-0500。此处原样重抛——
+     * Spring MVC 对 "@ExceptionHandler 方法自身抛出" 的处理是放弃解析并把原异常继续上抛，交还
+     * security 链的 {@code ExceptionTranslationFilter}：已认证越权 → accessDeniedHandler →
+     * 403 FORGE-0403 统一体（Spring Security 官方推荐模式，demo Task 8 集成实证：无本分支时
+     * mold-viewer 越权建模具得到 500）。匿名场景本分支不可达（进不了 handler）。
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public void handleAccessDenied(AccessDeniedException ex) throws AccessDeniedException {
+        throw ex;
     }
 
     /**

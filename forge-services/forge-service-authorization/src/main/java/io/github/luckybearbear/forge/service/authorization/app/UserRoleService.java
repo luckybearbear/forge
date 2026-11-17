@@ -49,6 +49,9 @@ public class UserRoleService {
         }
 
         userRoleRepository.deleteByUserId(userId);
+        // 先出清删除再插入（与 RoleService.assignPermissions 同型）：Hibernate flush 顺序
+        // inserts 先于 deletes，重叠重分配（新旧角色集交集非空）先 INSERT 撞 uk_auth_user_role。
+        userRoleRepository.flush();
         roleIds.forEach(roleId -> userRoleRepository.save(new UserRoleEntity(userId, roleId)));
 
         cacheFacade.evict(UserPermissionsQueryImpl.cacheKey(userId));

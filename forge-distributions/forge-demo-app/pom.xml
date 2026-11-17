@@ -25,6 +25,37 @@
       <groupId>io.github.luckybearbear</groupId>
       <artifactId>forge-data-starter</artifactId>
     </dependency>
+    <!-- 认证全链路接入（Task 8）：四服务 + security（TokenAuthFilter/方法安全）+ cache（权限快照）
+         + audit（访问/错误日志落库）。四服务自动配置各自限定 domain 包，@EntityScan/
+         @EnableJpaRepositories 声明累加共存（Task 3 遗留验证项，本模块上下文冒烟覆盖）。 -->
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-security-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-cache-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-audit-starter</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-service-tenant</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-service-identity</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-service-organization</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-service-authorization</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-starter-core</artifactId>

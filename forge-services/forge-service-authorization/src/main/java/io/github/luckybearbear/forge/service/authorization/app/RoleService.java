@@ -124,6 +124,11 @@ public class RoleService {
         Set<String> affectedUserIds = userIdsHoldingRole(roleId);
 
         rolePermissionRepository.deleteByRoleId(roleId);
+        // 先出清删除再插入：Hibernate flush 顺序 inserts 先于 deletes（EntityInsertAction 在
+        // EntityDeleteAction 前），且 uk_auth_role_permission 对 (role,permission) 唯一——重叠
+        // 重授权（新旧集合交集非空）时先 INSERT 撞现存行键（demo Task 8 集成实证：
+        // DataIntegrityViolation → 500）。flush() 即刻下发 DELETE SQL，绕开 action 排序。
+        rolePermissionRepository.flush();
         permissionIds.forEach(permissionId ->
                 rolePermissionRepository.save(new RolePermissionEntity(roleId, permissionId)));
 
