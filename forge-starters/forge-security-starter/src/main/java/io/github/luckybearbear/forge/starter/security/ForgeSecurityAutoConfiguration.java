@@ -8,6 +8,7 @@ import org.aspectj.lang.annotation.Aspect;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -46,8 +47,14 @@ import org.springframework.security.web.access.ExceptionTranslationFilter;
 @EnableConfigurationProperties(ForgeSecurityProperties.class)
 public class ForgeSecurityAutoConfiguration {
 
+    /**
+     * SERVLET 守卫（2b 前置加固）：安全链仅装配于 Servlet Web 环境——非 Servlet
+     * （NONE/Reactive，如纯后端服务/事件处理器仅引本 starter 用 TokenStore/@TenantIgnore）时
+     * 优雅退避，否则 HttpSecurity 等链路基建缺失会导致上下文启动失败。
+     */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass({SecurityFilterChain.class, HttpSecurity.class, TokenAuthFilter.class})
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     static class SecurityChainConfiguration {
 
         /**

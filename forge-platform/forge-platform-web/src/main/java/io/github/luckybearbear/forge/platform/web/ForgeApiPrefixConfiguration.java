@@ -13,6 +13,11 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
  * {@code org.springframework.boot.webmvc.autoconfigure} 包）替换默认 RequestMappingHandlerMapping。
  * 前缀属性由 starter 绑定 {@code forge.web.api-prefix.*} 后以 {@link ForgeApiPrefixProperties}
  * bean 注入；无 bean 时回退 {@link ForgeApiPrefixProperties#defaults()}。
+ *
+ * <p><b>2b 覆盖治理注记</b>：forge-spring-boot-starter 不再 {@code @Import} 本类（无条件注册
+ * 会与应用自带 WebMvcRegistrations 形成双候选，Boot 4 getIfUnique() 解析为 null 双双失效），
+ * 改为 {@code @ConditionalOnMissingBean(WebMvcRegistrations.class)} 的条件注册——本类保留供
+ * 直接 {@code @Import} 的既有用法（platform-web 自测即此路径）。
  */
 @Configuration
 public class ForgeApiPrefixConfiguration {

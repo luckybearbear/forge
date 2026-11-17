@@ -7,8 +7,10 @@ import io.github.luckybearbear.forge.platform.security.token.TokenGrant;
 import io.github.luckybearbear.forge.platform.security.token.TokenStore;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -20,6 +22,8 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>键：{@code auth:token:{token}}（opaque UUIDv7 token，不编码任何身份信息）</li>
  *   <li>值：StoredToken JSON（token/grant/expiresAt，Jackson 3 序列化，Instant → ISO-8601）</li>
  *   <li>TTL：键级过期即 token 生命周期；refresh 重写值（新 expiresAt）+ 重设 TTL，二者恒一致</li>
+ *   <li>refresh Lua 原子化（2b 前置加固）：条件写（GET 存在才 SET）——读值与条件重写间键被
+ *       吊销/逐出时不复活（revoke 后不可复活；旧 GET→SET 两步在窗口内可复活已吊销 token）</li>
  *   <li>resolve 双保险：键已被 Redis 逐出（TTL 到）自然 miss；JSON 内 expiresAt 再校验一次
  *       （防御 refresh 与逐出竞态及外部改 TTL 的运维操作）</li>
  * </ul>
@@ -29,6 +33,16 @@ import tools.jackson.databind.json.JsonMapper;
 public class RedisTokenStore implements TokenStore {
 
     static final String KEY_PREFIX = "auth:token:";
+
+    /**
+     * 条件重写（单键原子）：键存在 → 以 ARGV[1]（新 JSON）+ PX ARGV[2]（毫秒 TTL）重设并返回 1；
+     * 键不存在（过期/吊销）→ 不创建、返回 0。参数经 {@code RedisTemplate.execute(RedisScript, keys, args)}
+     * 走 String 序列化（与键值编码一致）。
+     */
+    private static final RedisScript<Boolean> REFRESH_SCRIPT =
+            RedisScript.of("if redis.call('GET', KEYS[1]) then "
+                    + "redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2]) return true "
+                    + "else return false end", Boolean.class);
 
     private final StringRedisTemplate redis;
     private final IdGenerator idGenerator = new UuidV7Generator();
@@ -69,7 +83,11 @@ public class RedisTokenStore implements TokenStore {
         }
         StoredToken stored = mapper.readValue(json, StoredToken.class);
         StoredToken renewed = new StoredToken(token, stored.grant(), Instant.now().plus(ttl));
-        redis.opsForValue().set(key(token), mapper.writeValueAsString(renewed), ttl);
+        Boolean refreshed = redis.execute(REFRESH_SCRIPT, List.of(key(token)),
+                mapper.writeValueAsString(renewed), String.valueOf(ttl.toMillis()));
+        if (!Boolean.TRUE.equals(refreshed)) {
+            return; // 读值与条件重写窗口内键消失（过期/吊销竞态）：不复活，静默放弃
+        }
     }
 
     private static String key(String token) {

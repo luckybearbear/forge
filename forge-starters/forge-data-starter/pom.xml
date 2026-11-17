@@ -23,5 +23,8 @@
     <!-- tests -->
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
     <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-test</artifactId><scope>test</scope></dependency>
+    <!-- 组合用例载体（2b Step 5）：@TenantIgnore 切面（TenantIgnoreAspect）栖身 security-starter，
+         test 依赖引入后随其 @AutoConfiguration 装配生效；NONE 环境同时实证 SecurityChain 的 SERVLET 守卫退避 -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-security-starter</artifactId><scope>test</scope></dependency>
   </dependencies>
 </project>

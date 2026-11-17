@@ -8,11 +8,13 @@ import io.github.luckybearbear.forge.platform.security.token.TokenStore;
 import io.github.luckybearbear.forge.platform.test.AbstractIntegrationTest;
 import java.time.Duration;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
@@ -51,6 +53,7 @@ class SecurityStarterIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Autowired TokenStore tokenStore;
+    @Autowired StringRedisTemplate stringRedisTemplate;
     @LocalServerPort int port;
 
     // Boot 4 无 TestRestTemplate：裸 RestTemplate + 透传 handler（不抛 4xx/5xx），
@@ -117,6 +120,28 @@ class SecurityStarterIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).contains("ignore=true");
+    }
+
+    @Test
+    void refreshDoesNotResurrectRevokedToken() {
+        // refresh Lua 条件写原子化（2b 前置加固）：GET 存在才 SET——revoke 后 refresh
+        // 不得重建键（复活即已吊销 token 重新可用，GET→SET 窗口内吊销亦不可复活）
+        StoredToken stored = tokenStore.create(grant("u-4", "t-7"), Duration.ofHours(8));
+        tokenStore.revoke(stored.token());
+        tokenStore.refresh(stored.token(), Duration.ofHours(8));
+        assertThat(stringRedisTemplate.hasKey(RedisTokenStore.KEY_PREFIX + stored.token())).isFalse();
+        assertThat(tokenStore.resolve(stored.token())).isEmpty();
+    }
+
+    @Test
+    void refreshRenewsExistingKeyTtlAndExpiry() {
+        StoredToken stored = tokenStore.create(grant("u-5", "t-7"), Duration.ofSeconds(5));
+        tokenStore.refresh(stored.token(), Duration.ofHours(1));
+        // 既有键续期：键 TTL 由脚本 PX 重设为长窗口，值内 expiresAt 前移（滑动续期语义不变）
+        assertThat(stringRedisTemplate.getExpire(RedisTokenStore.KEY_PREFIX + stored.token(),
+                TimeUnit.SECONDS)).isGreaterThan(1800L);
+        assertThat(tokenStore.resolve(stored.token()))
+                .hasValueSatisfying(renewed -> assertThat(renewed.expiresAt()).isAfter(stored.expiresAt()));
     }
 
     private static TokenGrant grant(String userId, String tenantId) {
