@@ -1,6 +1,7 @@
 package io.github.luckybearbear.forge.service.identity.app;
 
 import io.github.luckybearbear.forge.contract.authorization.UserPermissionsQuery;
+import io.github.luckybearbear.forge.contract.identity.UserPasswordChanged;
 import io.github.luckybearbear.forge.contract.tenant.TenantDTO;
 import io.github.luckybearbear.forge.contract.tenant.TenantErrorCodes;
 import io.github.luckybearbear.forge.contract.tenant.TenantQueryService;
@@ -18,6 +19,7 @@ import io.github.luckybearbear.forge.service.identity.domain.PlatformAdminEntity
 import io.github.luckybearbear.forge.service.identity.domain.PlatformAdminRepository;
 import io.github.luckybearbear.forge.service.identity.domain.UserStatus;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -25,17 +27,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * 双端登录编排：app 登录（租户校验→用户查询→密码→权限集→token）/ admin 登录（平台管理员，
- * 全局表直查）/ logout（吊销当前 token）/ me（SecurityContext 快照）。
+ * 全局表直查）/ logout（吊销当前 token）/ me（SecurityContext 快照）/ admin 自助改密
+ * （{@link #changeAdminPassword}——种子口令更换通道，旧 token 全吊销）。
  *
  * <p><b>登录上下文管理（@TenantId 判别式与租户上下文）</b>：
  * <ul>
@@ -43,10 +48,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  *     租户上下文解析——用户查询前显式 {@code TenantContextHolder.setTenantId(tenant.id())}，
  *     查询完毕 finally {@code clear()}（TTL 泄漏防护；即便查询抛出也回收）。</li>
  * <li>租户用户查询经 {@link TransactionTemplate}（REQUIRES_NEW + readOnly）执行：新独立事务
- *     开启新会话，保证判别式在 setTenantId <b>之后</b>解析。若用 REQUIRED，消费应用开启 OSIV
- *     （Boot 4 默认 spring.jpa.open-in-view=true）时请求级会话在 setTenantId 之前已开启，
- *     判别式会解析为平台租户 "0"（租户表恒空）→ 登录恒坏凭据。REQUIRES_NEW 挂起请求级会话、
- *     开新会话解析正确租户；无 OSIV（本服务集成测试 NONE 环境/消费应用显式关闭）时行为等价。</li>
+ *     开启新会话，保证判别式在 setTenantId <b>之后</b>解析（无 OSIV 时即恢复正确租户）。
+ *     但 <b>OSIV 开启时 REQUIRES_NEW 不足以恢复判别式租户</b>（demo 全栈实证：appLogin 恒
+ *     IDENT-0401）——消费应用必须关闭 OSIV（{@code spring.jpa.open-in-view=false}，见
+ *     docs/architecture/dependency-rules.md 与 demo application.yaml）；Phase 3 评估系统性方案。</li>
  * <li>admin 登录查 platform_admin 全局表（无 @TenantId）——无租户上下文直查即可，不涉及判别式。</li>
  * </ul>
  *
@@ -94,6 +99,7 @@ public class AuthService {
     private final PasswordHasher passwordHasher;
     private final TokenStore tokenStore;
     private final ObjectProvider<UserPermissionsQuery> permissionsQueryProvider;
+    private final ApplicationEventPublisher eventPublisher;
     private final Duration tokenTtl;
     private final TransactionTemplate tenantReadTx;
     private final AtomicBoolean permissionsAbsentWarned = new AtomicBoolean();
@@ -104,6 +110,7 @@ public class AuthService {
                        PasswordHasher passwordHasher,
                        TokenStore tokenStore,
                        ObjectProvider<UserPermissionsQuery> permissionsQueryProvider,
+                       ApplicationEventPublisher eventPublisher,
                        PlatformTransactionManager transactionManager,
                        @Value("${forge.security.token-ttl:8h}") Duration tokenTtl) {
         this.tenantQueryService = tenantQueryService;
@@ -112,6 +119,7 @@ public class AuthService {
         this.passwordHasher = passwordHasher;
         this.tokenStore = tokenStore;
         this.permissionsQueryProvider = permissionsQueryProvider;
+        this.eventPublisher = eventPublisher;
         this.tokenTtl = tokenTtl;
         this.tenantReadTx = new TransactionTemplate(transactionManager);
         this.tenantReadTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -158,6 +166,34 @@ public class AuthService {
         }
     }
 
+    /**
+     * admin 自助改密（PUT /admin-api/auth/password，最终评审 Important-2——闭合种子口令 admin/admin123
+     * 的默认凭据暴露面）：SecurityContext 取当前 {@link ForgeAuthentication} 的 userId 定位
+     * platform_admin（全局表，无判别式）→ 旧密码错 {@code IDENT-0401}（与登录同码同文案，防以改密
+     * 通道探测）→ 新密码弱 {@code IDENT-0400}（复用 {@link UserService#requireStrongPassword} 同一
+     * 规则）→ 更新 hash → 发布 {@link UserPasswordChanged}（tenantId=null, userId=adminId）——
+     * admin 端 grant 的 userId 即 adminId（见 {@link #adminLogin}），security-starter 监听器
+     * revokeByUserId 即吊销该管理员全部既有 token（含本次改密所用 token——自助改密后需重登，安全方向）。
+     */
+    @Transactional
+    public void changeAdminPassword(String oldPassword, String newPassword) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (!(authentication instanceof ForgeAuthentication forge)) {
+            // 不可达防线：/admin-api/** 面经 TokenAuthFilter 认证（PLATFORM authority）后才会到达
+            throw BusinessException.of(IdentityErrorCodes.IDENT_BAD_CREDENTIALS);
+        }
+        PlatformAdminEntity admin = adminRepository.findById(forge.getUserId()).orElse(null);
+        // 恒时同路线（admin 主体未命中也对 DUMMY hash 执行等代价比较，不泄露存在性）
+        boolean matched = passwordHasher.matches(oldPassword,
+                admin != null ? admin.getPasswordHash() : DUMMY_PASSWORD_HASH);
+        if (admin == null || !matched) {
+            throw BusinessException.of(IdentityErrorCodes.IDENT_BAD_CREDENTIALS);
+        }
+        UserService.requireStrongPassword(newPassword);
+        admin.setPasswordHash(passwordHasher.hash(newPassword));
+        eventPublisher.publishEvent(new UserPasswordChanged(null, admin.getId(), Instant.now()));
+    }
+
     /** 当前认证主体快照（/me）：非 ForgeAuthentication（如未认证且被放行到达服务层）返回 null。 */
     public MeResponse currentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
@@ -172,8 +208,9 @@ public class AuthService {
 
     /**
      * 租户上下文内的用户名查询：setTenantId → 查询 → finally clear。
-     * 查询走 REQUIRES_NEW 只读事务（见类 javadoc"登录上下文管理"——新会话保证判别式在
-     * setTenantId 之后解析，OSIV 消费应用下语义不漂移）；未命中返回 null（与密码错误同路）。
+     * 查询走 REQUIRES_NEW 只读事务（新会话保证判别式在 setTenantId 之后解析）；注意 OSIV 开启时
+     * 这仍不足以恢复判别式租户——消费应用必须关闭 OSIV（见类 javadoc"登录上下文管理"第 2 条）；
+     * 未命中返回 null（与密码错误同路）。
      */
     private IdentityUserEntity findByUsernameUnderTenant(String tenantId, String username) {
         TenantContextHolder.setTenantId(tenantId);

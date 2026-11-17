@@ -34,7 +34,7 @@ SPRING_PROFILES_ACTIVE=demo ./mvnw -pl forge-distributions/forge-demo-app -am sp
 
 1. 登录：`POST /app-api/auth/login`，体 `{"tenantCode":"t-mfg","username":"mfg-admin","password":"Admin@123"}` → 取 `data.token`
 2. swagger 右上 **Authorize** 填 `Bearer <token>`（含 `Bearer ` 前缀）→ 调业务端点（mold-viewer 登录后越权 POST → 403 FORGE-0403）
-3. 管理面：`POST /admin-api/auth/login` 用平台管理员 `admin` / `admin123`（初始口令，首登后尽快经改密通道更换）
+3. 管理面：`POST /admin-api/auth/login` 用平台管理员 `admin` / `admin123`（初始口令——**首次部署登录后立即执行 `PUT /admin-api/auth/password` 修改**，成功后既有 token 全部吊销需重登）
 
 种子表/权限快照（变更需重登）/审计落表等细节见 `forge-distributions/forge-demo-app/README.md` 与 `docs/development/getting-started.md`。
 

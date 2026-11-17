@@ -5,6 +5,7 @@ import io.github.luckybearbear.forge.platform.core.Result;
 import io.github.luckybearbear.forge.service.organization.app.OrgUnitNode;
 import io.github.luckybearbear.forge.service.organization.app.OrgUnitService;
 import jakarta.validation.Valid;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,10 +19,13 @@ import java.util.List;
 /**
  * 组织单元接口（双端前缀自动前插 /app-api）：/app-api/org-units CRUD + GET /tree +
  * PUT /{id}/move（环检测）+ GET /{id}/sub-tree。作用域为当前认证租户（判别式天然隔离）。
+ * 类级 {@code @PreAuthorize("hasAuthority('org:manage')")}：权限点由 service-authorization
+ * 分配（字典 seed id …0003），方法安全由 forge-security-starter 激活，未授权 403（FORGE-0403）。
  * 控制器薄层：校验 + Result 包装，业务语义（错误码/事件/环检测）全在 {@link OrgUnitService}。
  */
 @RestController
 @RequestMapping("/org-units")
+@PreAuthorize("hasAuthority('org:manage')")
 public class OrgUnitAppController {
 
     private final OrgUnitService orgUnitService;

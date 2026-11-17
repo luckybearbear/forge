@@ -6,8 +6,10 @@
 ## 模块形态
 
 - **pom**：parent `forge-services`；依赖 `forge-data-starter` + `forge-spring-boot-starter` +
-  `forge-contract-organization` + `forge-contract-identity`（platform-core 显式声明）；
-  test：`spring-boot-starter-test` + `forge-platform-test`。无 Lombok，**不依赖任何 service**。
+  `forge-contract-organization` + `forge-contract-identity`（platform-core 显式声明）+
+  `spring-security-core`（仅控制器类级 `@PreAuthorize` 注解编译所需——运行期激活由消费应用的
+  forge-security-starter 承担）；test：`spring-boot-starter-test` + `forge-platform-test`。
+  无 Lombok，**不依赖任何 service**。
 - **自动配置**：`OrganizationServiceAutoConfiguration` = `@AutoConfiguration` +
   `@ComponentScan(模块根包)` + `@EntityScan(domain)` + `@EnableJpaRepositories(domain)`（Boot 4
   注意：`@EntityScan` 在 `org.springframework.boot.persistence.autoconfigure`）；无 `@Bean` 方法。
@@ -51,6 +53,11 @@
 
 ## 接口（实际路径含 /app-api 前缀）
 
+**org 面三控制器（org-units/positions/user-positions）均类级
+`@PreAuthorize("hasAuthority('org:manage')")`**（最终评审 Important-1 补齐：Phase 2b 曾整体
+遗失，任何登录用户可写组织树；权限点由 service-authorization 分配，字典 seed id …0003；
+未授权 403 FORGE-0403；写法与 identity 的 UserAppController 类级同构）。
+
 - `POST /org-units`、`GET /org-units/{id}`、`GET /org-units/tree`、`GET /org-units/{id}/sub-tree`、
   `PUT /org-units/{id}`、`PUT /org-units/{id}/move`、`DELETE /org-units/{id}`
 - `POST /positions`、`GET /positions/{id}`、`GET /positions?orgUnitId=`、`PUT /positions/{id}`、
@@ -67,4 +74,7 @@
 （子节点/岗位/挂岗三层）、岗位 CRUD（含换挂靠）、挂岗契约校验（IDENT-0404/ORG-0414）、
 幂等挂岗/摘岗/重挂（顺序）+ **并发竞争真幂等**（一次性隐藏装饰仓库夹具：pre-check 漏检 →
 insert 撞唯一键 → 捕获重查返回赢家行）、双租户隔离（三表互不可见 + 事件租户
-打标）——7/7 全绿。控制器薄层（校验+Result 包装）；RANDOM_PORT 全链路由 demo 装配（Task 8）承载。
+打标）——7/7 全绿。另 `OrgControllersPreAuthorizeAnnotationTest`（纯 JUnit 反射）：三控制器
+类级 org:manage 门禁注解存在性防回归钉子。控制器薄层（校验+Result 包装）；RANDOM_PORT 全链路
+（HTTP 级 org:manage 403 实证：mold-viewer 调 /app-api/org-units/tree → FORGE-0403，mold-admin
+对照 200）由 demo 装配承载。

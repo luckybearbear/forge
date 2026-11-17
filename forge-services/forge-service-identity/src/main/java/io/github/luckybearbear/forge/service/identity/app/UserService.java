@@ -103,8 +103,11 @@ public class UserService {
                         .withHttpStatus(404));
     }
 
-    /** 弱密码校验（IDENT-0400）：≥8 位且同时含字母与数字（简单规则，见类 javadoc）。 */
-    private void requireStrongPassword(String password) {
+    /**
+     * 弱密码校验（IDENT-0400）：≥8 位且同时含字母与数字（简单规则，见类 javadoc）。
+     * 包私有静态：同包的 {@link AuthService} admin 自助改密复用同一规则（单一来源防漂移）。
+     */
+    static void requireStrongPassword(String password) {
         boolean strong = password != null && password.length() >= 8
                 && password.chars().anyMatch(Character::isLetter)
                 && password.chars().anyMatch(Character::isDigit);

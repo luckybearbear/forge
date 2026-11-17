@@ -74,9 +74,10 @@ Demo（forge-demo-app）连 PostgreSQL 运行，本地基础设施二选一（�
 
 登录 `POST /app-api/auth/login`（体含 tenantCode/username/password）→ `data.token` → swagger
 右上 **Authorize** 填 `Bearer <token>`（含前缀）。管理面 `POST /admin-api/auth/login` 用平台
-管理员 **admin / admin123**（service-identity Flyway 种子行；**初始口令仅供首登体验，登录后应尽快
-经改密通道更换**）。权限快照冻结（授权变更需重登）、审计落表等完整体验流见
-`forge-distributions/forge-demo-app/README.md`。
+管理员 **admin / admin123**（service-identity Flyway 种子行；**初始口令仅供首登体验——首次部署
+登录后立即执行 `PUT /admin-api/auth/password` 修改**，体 `{"oldPassword":"admin123",
+"newPassword":"..."}`，成功后该管理员既有 token 全部吊销需重登）。权限快照冻结（授权变更需重登）、
+审计落表等完整体验流见 `forge-distributions/forge-demo-app/README.md`。
 
 ## OSIV：连库应用建议关闭
 

@@ -10,6 +10,7 @@ import io.github.luckybearbear.forge.contract.tenant.TenantErrorCodes;
 import io.github.luckybearbear.forge.contract.tenant.TenantQueryService;
 import io.github.luckybearbear.forge.platform.core.BusinessException;
 import io.github.luckybearbear.forge.platform.security.TenantContextHolder;
+import io.github.luckybearbear.forge.platform.security.auth.ForgeAuthentication;
 import io.github.luckybearbear.forge.platform.security.password.PasswordHasher;
 import io.github.luckybearbear.forge.platform.security.token.StoredToken;
 import io.github.luckybearbear.forge.platform.security.token.TokenStore;
@@ -37,6 +38,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.event.EventListener;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -257,6 +260,66 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
                 .isEqualTo("用户名或密码错误");
     }
 
+    /**
+     * admin 自助改密（最终评审 Important-2）：闭合种子口令 admin/admin123 的默认凭据暴露面。
+     * 旧密码错 IDENT-0401 / 新密码弱 IDENT-0400 / 成功后——UserPasswordChanged(tenantId=null,
+     * userId=adminId) → security-starter 监听器 revokeByUserId 吊销该管理员<b>全部</b>既有
+     * token（admin grant 的 userId 即 adminId）；旧口令再登失败、新口令可登。
+     *
+     * <p>SecurityContext 填充：真实链路由 TokenAuthFilter 以 resolve 的 grant 构建
+     * ForgeAuthentication——NONE 环境下测试自 token 还原同构填充。finally 恢复种子口令
+     * admin123（本类其余用例依赖之，方法序无关化）。
+     */
+    @Test
+    void adminChangePasswordRotatesCredentialAndRevokesAllAdminTokens() {
+        LoginResponse first = authService.adminLogin(new AdminLoginRequest("admin", "admin123"));
+        LoginResponse second = authService.adminLogin(new AdminLoginRequest("admin", "admin123"));
+        assertThat(tokenStore.resolve(first.token())).isPresent();
+        assertThat(tokenStore.resolve(second.token())).isPresent();
+
+        int eventsBefore = recorder.passwordChanged.size();
+        LoginResponse reLogin;
+        try {
+            runAsAdmin(first.token());
+            // 旧密码错 → IDENT-0401（与登录同码，防以改密通道探测）
+            assertThat(catchAdminChangePassword("WrongOld1x", "NewAdmin456x").errorCode())
+                    .isEqualTo(IdentityErrorCodes.IDENT_BAD_CREDENTIALS);
+            // 新密码弱 → IDENT-0400（复用 UserService 规则）
+            assertThat(catchAdminChangePassword("admin123", "short1").errorCode())
+                    .isEqualTo(IdentityErrorCodes.IDENT_PASSWORD_TOO_WEAK);
+
+            authService.changeAdminPassword("admin123", "NewAdmin456x");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        // 事件：tenantId=null（平台侧）、userId=adminId（admin grant 的 userId 即 adminId）
+        assertThat(recorder.passwordChanged).hasSize(eventsBefore + 1);
+        UserPasswordChanged event = recorder.passwordChanged.getLast();
+        assertThat(event.tenantId()).isNull();
+        assertThat(event.userId()).isEqualTo(first.userId());
+        assertThat(event.occurredAt()).isNotNull();
+
+        // 两旧 token 均被吊销（revokeByUserId 对 admin 侧生效——联测吊销链）
+        assertThat(tokenStore.resolve(first.token())).isEmpty();
+        assertThat(tokenStore.resolve(second.token())).isEmpty();
+
+        // 旧口令再登失败、新口令成功
+        assertThat(catchAdminLogin("admin", "admin123").errorCode())
+                .isEqualTo(IdentityErrorCodes.IDENT_BAD_CREDENTIALS);
+        reLogin = authService.adminLogin(new AdminLoginRequest("admin", "NewAdmin456x"));
+        assertThat(tokenStore.resolve(reLogin.token())).isPresent();
+
+        // 恢复种子口令（其余用例按 admin/admin123 登录——基线无关序）
+        try {
+            runAsAdmin(reLogin.token());
+            authService.changeAdminPassword("NewAdmin456x", "admin123");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+        assertThat(authService.adminLogin(new AdminLoginRequest("admin", "admin123")).token()).isNotBlank();
+    }
+
     @Test
     void logoutRevokesTokenSoResolveBecomesEmpty() {
         tenants.register(tenant(TENANT_ACME, "bye", "ENABLED"));
@@ -470,6 +533,27 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
     private BusinessException catchChangePassword(String userId, String oldPassword, String newPassword) {
         try {
             userService.changePassword(userId, oldPassword, newPassword);
+            throw new AssertionError("expected BusinessException");
+        } catch (BusinessException ex) {
+            return ex;
+        }
+    }
+
+    /**
+     * 以 admin token 填充 SecurityContext（TokenAuthFilter 同构：resolve grant →
+     * ForgeAuthentication）；调用方负责 finally {@link SecurityContextHolder#clearContext()}。
+     */
+    private void runAsAdmin(String rawToken) {
+        StoredToken stored = tokenStore.resolve(rawToken).orElseThrow(
+                () -> new AssertionError("token not resolvable for SecurityContext setup"));
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(ForgeAuthentication.of(stored, rawToken));
+        SecurityContextHolder.setContext(context);
+    }
+
+    private BusinessException catchAdminChangePassword(String oldPassword, String newPassword) {
+        try {
+            authService.changeAdminPassword(oldPassword, newPassword);
             throw new AssertionError("expected BusinessException");
         } catch (BusinessException ex) {
             return ex;

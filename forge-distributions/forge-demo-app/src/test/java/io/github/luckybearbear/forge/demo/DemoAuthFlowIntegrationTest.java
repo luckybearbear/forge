@@ -34,12 +34,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * （访问/错误日志）首次同台组装，种子数据经服务 API 铺底（@ActiveProfiles("test") →
  * {@link DemoDataSeeder}）。
  *
- * <p><b>八场景</b>（brief 全列）：① 无 token 401 FORGE-0401；② mfg-admin 登录建模 200；
- * ③ 双租户管理员同端点互不可见（判别式隔离经真实认证链）；④ mold-viewer（仅 mold:read）
- * POST → 403 FORGE-0403；⑤ 角色授权变更 → <b>新登录</b>即生效（权限快照缓存被显式 evict，
- * 但旧 token 的 TokenGrant 快照冻结——见 {@link #permissionGrantTakesEffectOnReLoginOnly()}）；
- * ⑥ logout 后旧 token 401；⑦ 上述流量入 api_access_log、未预期异常入 api_error_log；
- * ⑧ Modulith 边界保持绿（ModulithBoundaryTest，本类不重复）。
+ * <p><b>九场景</b>（brief 全列 + 最终评审 Important-1 补充）：① 无 token 401 FORGE-0401；
+ * ② mfg-admin 登录建模 200；③ 双租户管理员同端点互不可见（判别式隔离经真实认证链）；
+ * ④ mold-viewer（仅 mold:read）POST → 403 FORGE-0403；⑤ 角色授权变更 → <b>新登录</b>即生效
+ * （权限快照缓存被显式 evict，但旧 token 的 TokenGrant 快照冻结——见
+ * {@link #permissionGrantTakesEffectOnReLoginOnly()}）；⑥ logout 后旧 token 401；⑦ 上述流量入
+ * api_access_log、未预期异常入 api_error_log；⑧ Modulith 边界保持绿（ModulithBoundaryTest，
+ * 本类不重复）；⑨ org 面类级 org:manage 门禁（mold-viewer 调 /app-api/org-units/tree 403，
+ * mold-admin 200 对照——org 三控制器门禁的 HTTP 级实证）。
  *
  * <p><b>场景 5 的快照语义（本测试组要演示的边界）</b>：权限在<b>登录时</b>进 TokenGrant
  * 快照——改角色授权后旧 token 不含新权限（继续 403）；重新登录经 UserPermissionsQuery 重新
@@ -123,6 +125,30 @@ class DemoAuthFlowIntegrationTest extends AbstractIntegrationTest {
                 json("{\"name\":\"越权尝试\",\"specification\":\"一腔\"}", viewerToken), String.class);
         assertThat(response.getStatusCode().value()).isEqualTo(403);
         assertThat((String) JsonPath.read(response.getBody(), "$.code")).isEqualTo("FORGE-0403");
+    }
+
+    // ---- 场景 9：org 面类级 org:manage 门禁（最终评审 Important-1 的 HTTP 级实证）----
+
+    /**
+     * org 三控制器（org-units/positions/user-positions）类级
+     * {@code @PreAuthorize("hasAuthority('org:manage')")}：mold-viewer（仅 mold:read）调
+     * GET /app-api/org-units/tree → 403 FORGE-0403；对照 mold-admin（ADMIN 角色，字典全量含
+     * org:manage）→ 200——证明 403 源自权限门禁而非端点/装配问题。注解存在性的防回归钉子
+     * 在 organization 模块（OrgControllersPreAuthorizeAnnotationTest）；本场景补 HTTP 链实证。
+     */
+    @Test
+    void orgFaceRequiresOrgManageAuthority() {
+        String viewerToken = login("t-mold", "mold-viewer", "Viewer@123");
+        ResponseEntity<String> denied = rest.exchange(url("/app-api/org-units/tree"), HttpMethod.GET,
+                bearer(viewerToken), String.class);
+        assertThat(denied.getStatusCode().value()).isEqualTo(403);
+        assertThat((String) JsonPath.read(denied.getBody(), "$.code")).isEqualTo("FORGE-0403");
+
+        String adminToken = login("t-mold", "mold-admin", "Admin@123");
+        ResponseEntity<String> allowed = rest.exchange(url("/app-api/org-units/tree"), HttpMethod.GET,
+                bearer(adminToken), String.class);
+        assertThat(allowed.getStatusCode().value()).isEqualTo(200);
+        assertThat((String) JsonPath.read(allowed.getBody(), "$.code")).isEqualTo("OK");
     }
 
     // ---- 场景 5：角色授权变更 → 新登录生效；旧 token 快照冻结（Phase 3 才做 token 内刷新）----

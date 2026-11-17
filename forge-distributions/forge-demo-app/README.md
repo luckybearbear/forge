@@ -52,11 +52,12 @@ authorization 的权限快照缓存），连接走 Boot 缺省 `localhost:6379`�
 4. **业务端点**：`POST /app-api/molds`（需 mold:create）→ `GET /app-api/molds/{id}`（mold:read）→
    `POST /app-api/molds/{id}/repairs`（mold:repair）→ `GET /app-api/maintenances?moldId={id}`
    （maint:read）。mold-viewer 登录后 POST → 403 FORGE-0403（方法级权限）。
+   组织面：`GET /app-api/org-units/tree` 等三控制器类级门禁 `org:manage`（mold-viewer 403，ADMIN 有）。
    管理：`GET/PUT /app-api/roles/**`（需 role:manage，ADMIN 有）。
 
 > **权限快照语义**：权限集在登录时冻结进 TokenGrant——给角色加/减权限后**旧 token 不变**
 > （越权依旧 403），**重新登录**即取新集（authorization 侧快照缓存已被写路径显式 evict）。
-> token 内权限刷新机制属 Phase 3。双租户互不可见、登出吊销、审计落表等八场景验收见
+> token 内权限刷新机制属 Phase 3。双租户互不可见、登出吊销、审计落表、org 面门禁等九场景验收见
 > `DemoAuthFlowIntegrationTest`（Testcontainers 真实 PG/Redis 全 HTTP 链）。
 
 > **OSIV 关闭**（application.yaml `spring.jpa.open-in-view=false`）：OSIV 请求级会话在租户上下文

@@ -28,8 +28,9 @@
 - `platform_admin`（**全局表**，extends AbstractAuditableEntity）：username partial unique；无判别式
   ——admin 登录在无租户上下文下直查。
 - **初始口令**：种子 `admin` / `admin123`（hash 由 `PasswordHasher` 现场生成一次写入迁移，带
-  `{bcrypt}` 注册前缀）。**首登后应立即经改密通道更换**（当前 admin 侧暂无自助改密端点，可经 SQL
-  重置或后续任务补齐——见已知取舍）；生产部署务必改掉种子口令。
+  `{bcrypt}` 注册前缀）。**首登后应立即经 `PUT /admin-api/auth/password` 自助改密更换**（最终评审
+  Important-2 已补齐该通道：旧密码校验 + 弱口令 IDENT-0400 + UserPasswordChanged 吊销既有 token）；
+  生产部署务必改掉种子口令。
 
 ## 登录上下文管理（@TenantId 判别式与租户上下文——核心语义）
 
@@ -37,10 +38,10 @@
   （契约 `TenantQueryService.findByCode` → TENANT-0404[404]；状态非 ENABLED → TENANT-0423）后，
   **显式 `TenantContextHolder.setTenantId(tenant.id())` → 查用户 → finally `clear()`**。
 - **判别式在会话开启时解析**：租户用户查询经 `TransactionTemplate`（**REQUIRES_NEW** + readOnly）
-  执行——新独立事务开新会话，保证判别式在 setTenantId 之后解析。若用 REQUIRED，消费应用开启
-  OSIV（Boot 4 默认 `spring.jpa.open-in-view=true`，jar 实证 4.1.2 仍默认开）时请求级会话在
-  setTenantId 之前已开启，判别式解析为平台租户 "0"（租户表恒空）→ 登录恒坏凭据。REQUIRES_NEW
-  挂起请求级会话开新会话；无 OSIV（本模块测试 NONE 环境）时行为等价。
+  执行——新独立事务开新会话，保证判别式在 setTenantId 之后解析。**但 OSIV 开启时 REQUIRES_NEW
+  不足以恢复判别式租户**（demo 全栈实证：appLogin 恒 IDENT-0401）——消费应用必须关闭 OSIV
+  （`spring.jpa.open-in-view=false`，见 `docs/architecture/dependency-rules.md` 的 OSIV 小节与
+  demo application.yaml）；Phase 3 评估系统性方案。
 - **admin 登录**：platform_admin 全局表无 `@TenantId`——无租户上下文直查即可，不涉及判别式。
 - **坏凭据不泄露存在性**：用户不存在/密码错误/账号停用 → 同一 `IDENT-0401` 同一文案
   （defaultMessage 无占位符），响应不可区分（防用户名枚举）；admin 侧同规则。
@@ -79,14 +80,17 @@
 ## 接口（实际路径含 /app-api、/admin-api 前缀）
 
 - `POST /app-api/auth/login`（permit-all 默认项）、`POST /app-api/auth/logout`、`GET /app-api/auth/me`
-- `POST /admin-api/auth/login`（permit-all 默认项）、`POST /admin-api/auth/logout`、`GET /admin-api/auth/me`
+- `POST /admin-api/auth/login`（permit-all 默认项）、`POST /admin-api/auth/logout`、
+  `GET /admin-api/auth/me`、**`PUT /admin-api/auth/password`**（自助改密：需已认证 admin token——
+  /admin-api/** 面 PLATFORM 门禁；旧密码错 IDENT-0401、新密码弱 IDENT-0400；成功吊销该管理员全部
+  既有 token，种子口令 admin/admin123 的更换通道）
 - `/app-api/users`：`POST`（创建）、`GET /{id}`、`PUT /{id}/password`、`POST /{id}/disable`、
   `POST /{id}/enable`——类级 `@PreAuthorize("hasAuthority('user:manage')")`（权限点分配见 Task 6）
 - 契约查询 bean：`UserQueryService`（findById → `Optional<UserDTO>`，租户视角）
 
 ## 集成实证
 
-`IdentityServiceIntegrationTest`（14 用例，真实 postgres:18-alpine + redis:8-alpine 容器；
+`IdentityServiceIntegrationTest`（15 用例，真实 postgres:18-alpine + redis:8-alpine 容器；
 `@SpringBootTest(NONE)` + `@Import(IdentityServiceAutoConfiguration)`，token 生命周期走
 security-starter 的 **RedisTokenStore**）：app 登录成功（token 可 resolve、grant 含租户/MEMBER/
 空权限集 + finally clear 卫生）、未知租户 TENANT-0404/404、停用租户 TENANT-0423、
@@ -94,7 +98,9 @@ security-starter 的 **RedisTokenStore**）：app 登录成功（token 可 resol
 PLATFORM + authorities=[PLATFORM]（admin-api 面准入）；坏凭据同码）、logout 后 resolve 为空、改密（旧密码错 IDENT-0401/弱新密码
 IDENT-0400/成功发 UserPasswordChanged 且旧密码失败新密码可登录）、**登录恒时**（未命中/密码错/停用/
 成功各恰一次 bcrypt，可计数桩断言）、**改密即时吊销既有 token**（两 token 改密后双双失效，新密码
-可登，identity × security-starter 联测）、用户创建重复名 IDENT-0409/409
+可登，identity × security-starter 联测）、**admin 自助改密**（SecurityContext 取 adminId → 旧密码
+错 IDENT-0401/弱新密码 IDENT-0400/成功后两旧 token 双双 401、旧口令再登失败新口令可登——吊销链
+对 admin 侧联测）、用户创建重复名 IDENT-0409/409
 + UserCreated 单发 + 跨租户可重名、弱初始密码 IDENT-0400、契约查询租户视角隔离
 （本租户命中/他租户空/平台视角空）。`IdentityServicePermissionsGrantTest`（1 用例）：UserPermissionsQuery
 装配后登录 grant 携带真实权限点。
@@ -114,8 +120,8 @@ IDENT-0400/成功发 UserPasswordChanged 且旧密码失败新密码可登录）
 - **用户自带 resolver 时写守护消失**（Task 1 遗留）：data-starter 的 customizer
   （含 `AbstractTenantEntity.setWriteGuard` 装配）按 `@ConditionalOnBean(ForgeTenantIdentifierResolver)`
   让位——用户自管多租户接线时写守护随之不注入（fail-open）。平台默认装配下无影响。
-- **admin 侧无自助改密端点**：种子口令更换暂经 SQL/后续任务；admin 密码哈希更新走
-  `platform_admin.password_hash`（同 `{bcrypt}` 前缀格式）。
+- **~~admin 侧无自助改密端点~~（已补齐）**：`PUT /admin-api/auth/password`（最终评审 Important-2）
+  ——种子口令更换不再依赖 SQL；成功即吊销该管理员全部既有 token（含改密所用 token，需重登）。
 - **DISABLED 用户改密/登录语义**：登录按坏凭据拒绝；改密未拦截停用用户（管理员恢复流程的一部分）。
 - **logout 未吊销该用户全部 token**：按 token 粒度吊销；全端下线走改密通道
   （UserPasswordChanged → security-starter 监听 revokeByUserId，已实现）。

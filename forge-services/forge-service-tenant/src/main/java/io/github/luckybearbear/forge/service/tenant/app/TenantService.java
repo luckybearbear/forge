@@ -78,7 +78,8 @@ public class TenantService {
     public TenantDTO disable(String id) {
         TenantEntity entity = requireTenant(id);
         if (entity.getStatus() == TenantStatus.DISABLED) {
-            return toDto(entity); // 幂等：不重复发事件（identity 侧按事件触发清理，重复会放大）
+            return toDto(entity); // 幂等：不重复发事件（TenantDisabled 当前无消费者——Phase 3 排期
+            // revokeByTenantId；停用后存量 token 存活至 TTL，与 dependency-rules 事件表一致）
         }
         entity.setStatus(TenantStatus.DISABLED);
         eventPublisher.publishEvent(new TenantDisabled(entity.getId(), Instant.now()));
