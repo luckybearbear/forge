@@ -19,17 +19,22 @@ import io.github.luckybearbear.forge.service.organization.app.UserPositionDTO;
 import io.github.luckybearbear.forge.service.organization.app.UserPositionService;
 import io.github.luckybearbear.forge.service.organization.domain.OrgUnitRepository;
 import io.github.luckybearbear.forge.service.organization.domain.OrgUnitType;
+import io.github.luckybearbear.forge.service.organization.domain.UserPositionRepository;
+import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.event.EventListener;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,7 +43,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * service-organization 集成测试（真实 PG 容器，service 方法级——不经 HTTP）：组织树 CRUD/子树查询
  * （服务 + 契约 OrgTreeQueryService 双路）、**move 环检测必红路径**（移到自身/子孙下抛 ORG-0409；
  * 脏数据环经 64 层上溯上限熔断）、删除保护（有子节点或岗位/挂岗拒绝）、挂岗跨服务契约校验
- * （UserQueryService 桩：用户缺失 IDENT-0404 / 岗位缺失 ORG-0414）、幂等挂岗/摘岗、
+ * （UserQueryService 桩：用户缺失 IDENT-0404 / 岗位缺失 ORG-0414）、幂等挂岗/摘岗（顺序 + 并发竞争
+ * 装饰夹具——真幂等）、脏环上的 subTree 终止（visited 守卫）、
  * 双租户隔离（org 三表判别式互不可见）、OrgUnitChanged 三态事件。
  *
  * <p>UserQueryService 为内存桩（organization 不依赖 service-identity，契约消费即可——同 identity
@@ -71,7 +77,33 @@ class OrganizationServiceIntegrationTest extends AbstractIntegrationTest {
         EventRecorder eventRecorder() {
             return new EventRecorder();
         }
+
+        /** 并发幂等夹具：一次性隐藏装饰仓库（@Primary 透明委托，armed 置位后下一次
+         *  findByUserIdAndPositionId 返回空——模拟竞争窗口内 pre-check 漏检，随即 insert 撞
+         *  partial unique；默认关闭，其余测试纯透传不受影响）。 */
+        @Bean
+        @Primary
+        UserPositionRepository hidingUserPositionRepository(
+                @Qualifier("userPositionRepository") UserPositionRepository delegate) {
+            return (UserPositionRepository) Proxy.newProxyInstance(
+                    UserPositionRepository.class.getClassLoader(),
+                    new Class<?>[] {UserPositionRepository.class},
+                    (proxy, method, args) -> {
+                        if ("findByUserIdAndPositionId".equals(method.getName())
+                                && RACE_FIXTURE_ARMED.compareAndSet(true, false)) {
+                            return Optional.empty(); // 竞争窗口：既有行对 pre-check 不可见
+                        }
+                        try {
+                            return method.invoke(delegate, args);
+                        } catch (java.lang.reflect.InvocationTargetException e) {
+                            throw e.getCause();
+                        }
+                    });
+        }
     }
+
+    /** 并发幂等夹具开关（static：夹具 bean 持有的代理无状态读此标志）。 */
+    static final AtomicBoolean RACE_FIXTURE_ARMED = new AtomicBoolean(false);
 
     /** 身份契约桩：状态可控（注册即在/未注册即缺失 → IDENT-0404）。 */
     static class StubUserQueryService implements UserQueryService {
@@ -258,6 +290,14 @@ class OrganizationServiceIntegrationTest extends AbstractIntegrationTest {
         // 脏环不拖垮树查询：环上节点不可达自根，tree() 不悬挂、不含 x1/x2
         List<OrgUnitNode> after = TenantTestSupport.runAsResult(TENANT_MOVE, () -> orgUnitService.tree());
         assertThat(after).extracting(n -> n.unit().name()).containsExactly("A", "target");
+
+        // 脏环守卫（fix #1）：环成员作 root 的 subTree 必须终止——visited 判重令两成员各输出一次，
+        // 不再无限下钻（契约路同证）
+        assertThat(TenantTestSupport.runAsResult(TENANT_MOVE, () -> orgUnitService.subTree(x1.id())))
+                .extracting(OrgUnitDTO::id).containsExactly(x1.id(), x2.id());
+        assertThat(TenantTestSupport.runAsResult(TENANT_MOVE,
+                () -> orgTreeQueryService.findSubTree(x2.id())))
+                .extracting(OrgUnitDTO::id).containsExactly(x2.id(), x1.id());
     }
 
     // ---------------------------------------------------------------- 删除保护 + delete 事件
@@ -430,6 +470,33 @@ class OrganizationServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(reassigned.id()).isNotEqualTo(assigned.id());
         assertThat(TenantTestSupport.runAsResult(TENANT_ASSIGN,
                 () -> userPositionService.findByUserId("u-1"))).hasSize(1);
+    }
+
+    // ---------------------------------------------------------------- 并发挂岗竞争（真幂等）
+
+    /**
+     * 并发幂等实证（fix #2）：装饰仓库令 pre-check 漏检既有行（竞争窗口），insert 撞
+     * (tenant, user, position) partial unique → service 捕获 DataIntegrityViolationException
+     * 后重查，返回竞争赢家既有行（不重复插、不向调用方报错）。
+     */
+    @Test
+    void concurrentAssignRaceReturnsExistingRow() {
+        users.register("u-race", TENANT_ASSIGN);
+        OrgUnitDTO unit = TenantTestSupport.runAsResult(TENANT_ASSIGN,
+                () -> orgUnitService.create(null, OrgUnitType.DEPT, "race-unit", 0));
+        PositionDTO pos = TenantTestSupport.runAsResult(TENANT_ASSIGN,
+                () -> positionService.create(unit.id(), "race-岗位", 0));
+        UserPositionDTO winner = TenantTestSupport.runAsResult(TENANT_ASSIGN,
+                () -> userPositionService.assign("u-race", pos.id())); // 竞争赢家已提交
+
+        RACE_FIXTURE_ARMED.set(true); // 下一次 pre-check 漏检（此后自动复位为纯透传）
+        UserPositionDTO raced = TenantTestSupport.runAsResult(TENANT_ASSIGN,
+                () -> userPositionService.assign("u-race", pos.id()));
+
+        assertThat(raced.id()).isEqualTo(winner.id()); // 返回既有行——真幂等
+        assertThat(TenantTestSupport.runAsResult(TENANT_ASSIGN,
+                () -> userPositionService.findByUserId("u-race"))).hasSize(1); // 无重复行
+        assertThat(RACE_FIXTURE_ARMED).isFalse(); // 夹具已复位（不影响后续测试）
     }
 
     // ---------------------------------------------------------------- 双租户隔离

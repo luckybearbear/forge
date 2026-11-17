@@ -30,15 +30,19 @@
   （FOREIGN_CODES 纪律：不新增枚举）；岗位有挂岗 → 同码 + "岗位存在挂岗，无法删除"。
   删除均为软删（编码/名字可复用由 partial unique index 承载）。
 - **挂岗**：userId 存在性经 contract-identity `UserQueryService`（缺失 → `IDENT-0404`/404）；
-  positionId 本域校验（`ORG-0414`/404）。**幂等挂岗**：同 (tenant, user, position) 再挂返回既有
-  记录（先查后插 + partial unique index `WHERE deleted = FALSE` 兜底并发）；**幂等摘岗**：不存在
-  静默成功；摘后可重挂（软删行不占键）。
+  positionId 本域校验（`ORG-0414`/404）。**幂等挂岗（顺序 + 并发）**：同 (tenant, user, position)
+  再挂返回既有记录——顺序路先查后插；并发竞争窗口漏检时 insert 撞 partial unique index
+  （`WHERE deleted = FALSE`），service 捕获 `DataIntegrityViolationException` 重查返回既有行
+  （`assign` 故意不挂外层事务：冲突经各仓库调用短事务隔离后方可安全捕获，外层事务会被
+  参与式 rollback-only 标记翻成 UnexpectedRollbackException——方法内已注释论证）；**幂等摘岗**：
+  不存在静默成功；摘后可重挂（软删行不占键）。
 - **事件**（业务事务内，spec §10）：`OrgUnitChanged`（changeType 三态字面量 `create`/`update`/`delete`；
   update 含 move）。tenantId 为**事件主体租户**——create 侧 @TenantId 插入时才绑定，publish 时取
   `CurrentTenantSupplier`（platform-core 接口，data-starter 装 TTL 实现）；加载态实体直接取实体字段。
 - **树查询**：`tree()` 全林嵌套（兄弟 (sort, id) 稳定排序）；`subTree`/契约 `OrgTreeQueryService.findSubTree`
   返回根开头先序扁平快照——**根缺失/他租户返回空集**（快照语义：消费方据此失效缓存，不区分 404）。
-  树形递归自根而下，环上节点不可达自根——脏环不会令查询悬挂。
+  脏环安全性：tree() 自 null-parent 根向下，环上节点祖先链恒在环内、不可达自根（不悬挂）；
+  subTree 可自任意节点起钻，下钻带 **visited-id 判重**——环成员作 root 时各输出一次即终止。
 
 ## 错误码（FOREIGN_CODES 纪律：本模块零新增）
 
@@ -59,6 +63,8 @@
 `OrganizationServiceIntegrationTest`（真实 PG 容器；测试类在服务根包外的独立分支包
 `io.github...forge.organization`，`@Bean` 桩供 `UserQueryService`——Task 4 防交叉泄漏范式）：
 树 CRUD/树形/子树（服务+契约双路）、**环检测必红路径**（A 移到子孙 C 下 ORG-0409 且树形不变、
-移到自身、脏数据环 64 层熔断）、删除保护（子节点/岗位/挂岗三层）、岗位 CRUD（含换挂靠）、
-挂岗契约校验（IDENT-0404/ORG-0414）、幂等挂岗/摘岗/重挂、双租户隔离（三表互不可见 + 事件租户
-打标）——6/6 全绿。控制器薄层（校验+Result 包装）；RANDOM_PORT 全链路由 demo 装配（Task 8）承载。
+移到自身、脏数据环 64 层熔断 + **环成员作 root 的 subTree 终止**[visited 守卫]）、删除保护
+（子节点/岗位/挂岗三层）、岗位 CRUD（含换挂靠）、挂岗契约校验（IDENT-0404/ORG-0414）、
+幂等挂岗/摘岗/重挂（顺序）+ **并发竞争真幂等**（一次性隐藏装饰仓库夹具：pre-check 漏检 →
+insert 撞唯一键 → 捕获重查返回赢家行）、双租户隔离（三表互不可见 + 事件租户
+打标）——7/7 全绿。控制器薄层（校验+Result 包装）；RANDOM_PORT 全链路由 demo 装配（Task 8）承载。

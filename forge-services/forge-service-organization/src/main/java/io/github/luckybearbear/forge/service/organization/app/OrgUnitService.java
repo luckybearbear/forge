@@ -12,8 +12,10 @@ import io.github.luckybearbear.forge.service.organization.domain.PositionReposit
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -140,12 +142,15 @@ public class OrgUnitService {
     /**
      * 子树快照（根开头的先序扁平列表）。根不存在返回空集——快照语义：消费方（如授权数据域）
      * 对已删单元取子树即得空，据此失效缓存，无须区分 404。
+     *
+     * <p><b>脏环守卫</b>：下钻带 visited-id 集合，环成员各输出一次后终止——与 tree() 自根不可达
+     * 环的安全性论证不同，本方法可从任意节点（含环成员）起钻，必须显式判重防无限递归。
      */
     @Transactional(readOnly = true)
     public List<OrgUnitDTO> subTree(String rootId) {
         return repository.findById(rootId).map(root -> {
             List<OrgUnitDTO> out = new ArrayList<>();
-            collectPreOrder(root, out);
+            collectPreOrder(root, out, new HashSet<>());
             return out;
         }).orElseGet(List::of);
     }
@@ -160,11 +165,14 @@ public class OrgUnitService {
         return new OrgUnitNode(toDto(entity), children);
     }
 
-    private void collectPreOrder(OrgUnitEntity entity, List<OrgUnitDTO> out) {
+    private void collectPreOrder(OrgUnitEntity entity, List<OrgUnitDTO> out, Set<String> visited) {
+        if (!visited.add(entity.getId())) {
+            return; // 脏环守卫：已访问节点不再下钻（环成员作 root 时含各成员一次并终止，不 StackOverflow）
+        }
         out.add(toDto(entity));
         repository.findByParentId(entity.getId()).stream()
                 .sorted(TREE_ORDER)
-                .forEach(child -> collectPreOrder(child, out));
+                .forEach(child -> collectPreOrder(child, out, visited));
     }
 
     /**
