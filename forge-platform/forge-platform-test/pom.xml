@@ -34,6 +34,20 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-testcontainers</artifactId>
     </dependency>
+    <!-- Boot 4 模块化：容器 ConnectionDetailsFactory 随技术工件分布（jar 实证 4.1.2）：
+         JdbcContainerConnectionDetailsFactory 在 spring-boot-jdbc、RedisContainerConnectionDetailsFactory
+         在 spring-boot-data-redis（4.1.2 BOM 无 spring-boot-redis 之名）。基类两容器均带
+         @ServiceConnection，故本工件须自备两 factory，否则非 JPA/非 Redis 下游测试启动即
+         ConnectionDetailsNotFoundException（Task 10 RED 实证：POSTGRES 源无 JDBC factory 即炸）。
+         无连接池实现时 DataSourceAutoConfiguration 不装配 DataSource（PooledDataSource 条件），无副作用。 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-data-redis</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>
       <artifactId>testcontainers-junit-jupiter</artifactId>

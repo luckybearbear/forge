@@ -14,5 +14,6 @@
   <modules>
     <module>forge-spring-boot-starter</module>
     <module>forge-data-starter</module>
+    <module>forge-security-starter</module>
   </modules>
 </project>

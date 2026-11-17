@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.github.luckybearbear</groupId>
+    <artifactId>forge-starters</artifactId>
+    <version>${revision}</version>
+  </parent>
+  <artifactId>forge-security-starter</artifactId>
+  <name>Forge :: Starter :: Security</name>
+  <dependencies>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-security</artifactId></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-core</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
+    <!-- Boot 4 改名件：starter-aop → starter-aspectj（4.1.2 BOM 实证，无 starter-aop） -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aspectj</artifactId></dependency>
+    <!-- Redis 栈整件（spring-data-redis + Lettuce + spring-boot-data-redis 自动配置模块）：
+         引本 starter 即得 RedisTokenStore 装配；排除后自动降级 InMemoryTokenStore + 启动 warn -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-redis</artifactId></dependency>
+    <!-- HttpSecurity/Filter 签名引用 servlet API；实际实现由 web starter 的容器提供 -->
+    <dependency><groupId>jakarta.servlet</groupId><artifactId>jakarta.servlet-api</artifactId><scope>provided</scope></dependency>
+    <!-- tests -->
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-test</artifactId><scope>test</scope></dependency>
+    <!-- 测试应用需要 web 端点 + Result 序列化 + actuator（permit-all 默认项 /actuator/health） -->
+    <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-spring-boot-starter</artifactId><scope>test</scope></dependency>
+  </dependencies>
+</project>

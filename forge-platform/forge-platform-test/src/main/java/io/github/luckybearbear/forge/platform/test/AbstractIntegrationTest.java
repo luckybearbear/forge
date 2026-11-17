@@ -12,10 +12,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * <p>Testcontainers 2.x 改名件（org.testcontainers:testcontainers-postgresql 等）类包名与 1.x 相同
  * （org.testcontainers.containers.PostgreSQLContainer，jar 内另有新包 org.testcontainers.postgresql 别名）。
  *
- * <p>Boot 4 实证：容器 ConnectionDetailsFactory 按技术模块分布（JDBC 的在 spring-boot-jdbc），
- * Redis 的工厂随 spring-boot-redis 模块——本基座不强制 Redis 在 classpath，故 REDIS 容器不带
- * {@code @ServiceConnection}（否则无 Redis 模块的测试直接 ConnectionDetailsNotFoundException）；
- * 需要 Redis 连接的下游测试在自身 classpath 含 spring-boot-redis 时另行注册。
+ * <p>Boot 4 实证：容器 ConnectionDetailsFactory 按技术模块分布（JDBC 的在 spring-boot-jdbc，
+ * Redis 的在 spring-boot-data-redis，4.1.2 BOM 无 spring-boot-redis 之名）——本基座 compile 依赖
+ * 两工件，两容器均带 {@code @ServiceConnection}：含对应技术栈的测试应用直接得到真连接；
+ * 不含的不受影响（RedisAutoConfiguration/DataSourceAutoConfiguration 以技术类/连接池存在为条件，
+ * Task 10 实证：data-starter 回归绿、security-starter 无 JDBC 栈不装配 DataSource）。
  */
 @Testcontainers(disabledWithoutDocker = true)
 public abstract class AbstractIntegrationTest {
@@ -24,7 +25,8 @@ public abstract class AbstractIntegrationTest {
     @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:18-alpine");
 
-    /** 统一基座：data-starter 测试未消费 Redis，保留供 security-starter/demo 复用。 */
+    /** security-starter 等含 Redis 技术栈的测试经 @ServiceConnection 直连本容器。 */
     @Container
+    @ServiceConnection
     static final GenericContainer<?> REDIS = new GenericContainer<>("redis:8-alpine").withExposedPorts(6379);
 }
