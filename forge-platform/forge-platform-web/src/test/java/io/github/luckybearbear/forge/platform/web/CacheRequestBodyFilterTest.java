@@ -39,4 +39,27 @@ class CacheRequestBodyFilterTest {
         filter.doFilter(request, response, chain);
         assertThat(chain.getRequest()).isSameAs(request); // 未包装
     }
+
+    @Test
+    void samePrefixButDifferentPathIsStillWrapped() throws ServletException, IOException {
+        // 终审 Important #2：精确路径匹配，/upload 不得误伤 /upload2
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/upload2");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+        filter.doFilter(request, response, chain);
+        assertThat(chain.getRequest()).isInstanceOf(
+                org.springframework.web.util.ContentCachingRequestWrapper.class);
+    }
+
+    @Test
+    void maxBodySizeAboveIntMaxClampedNotOverflow() throws ServletException, IOException {
+        // >Integer.MAX_VALUE 钳制：构造与包装不抛错/不为负
+        CacheRequestBodyFilter huge = new CacheRequestBodyFilter(Long.MAX_VALUE, Set.of());
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/app-api/x");
+        request.setContent("{}".getBytes(StandardCharsets.UTF_8));
+        MockFilterChain chain = new MockFilterChain();
+        huge.doFilter(request, new MockHttpServletResponse(), chain);
+        assertThat(chain.getRequest()).isInstanceOf(
+                org.springframework.web.util.ContentCachingRequestWrapper.class);
+    }
 }

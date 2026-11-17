@@ -2,9 +2,10 @@ spring:
   application:
     name: forge-demo-app
   datasource:
-    # 本地/部署经环境变量覆盖；默认指向本机 PostgreSQL 的 forge_demo 库（README：compose 或常驻实例 + 建库）
+    # 本地/部署经环境变量覆盖；默认 forge/forge/forge 三元组与根 compose 的 postgres 服务一致
+    # （compose 实例上另建 forge_demo 库即可直连；常驻实例经 FORGE_DB_* 换成真实凭据，README）
     url: ${FORGE_DB_URL:jdbc:postgresql://localhost:5432/forge_demo}
-    username: ${FORGE_DB_USERNAME:postgres}
+    username: ${FORGE_DB_USERNAME:forge}
     password: ${FORGE_DB_PASSWORD:forge}
   flyway:
     enabled: true # 迁移脚本 db/migration（demo 表）；event_publication 由 Modulith schema-init 负责

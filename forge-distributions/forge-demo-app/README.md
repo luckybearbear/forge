@@ -6,27 +6,28 @@
 
 ## 连库运行（PostgreSQL）
 
-连接默认 `jdbc:postgresql://localhost:5432/forge_demo`（用户 `postgres`），以环境变量覆盖：
-`FORGE_DB_URL` / `FORGE_DB_USERNAME` / `FORGE_DB_PASSWORD`。业务表由 Flyway（`db/migration`）初始化；
+连接默认 `jdbc:postgresql://localhost:5432/forge_demo`，凭据默认 `forge`/`forge`（与根 compose 的
+postgres 服务三元组一致），以环境变量覆盖：`FORGE_DB_URL` / `FORGE_DB_USERNAME` /
+`FORGE_DB_PASSWORD`。业务表由 Flyway（`db/migration`）初始化；
 `event_publication`（Modulith 事件登记表）由 `spring.modulith.events.jdbc.schema-initialization.enabled=true`
 自动建表；JPA `ddl-auto=validate` 仅校验映射、不建表。
 
 本地基础设施二选一：
 
 1. compose（含 Redis，供 2b 认证接入）：仓库根 `docker compose --profile infra up -d`
-   （PG 5432 / Redis 6379，库 forge / 用户 forge / 密码 forge），再补建 demo 库后启动：
+   （PG 5432 / Redis 6379，库 forge / 用户 forge / 密码 forge），再补建 demo 库后启动
+   （默认凭据即 forge/forge，无需再传 FORGE_DB_USERNAME/FORGE_DB_PASSWORD）：
 
    ```bash
    docker exec -it $(docker ps -qf name=postgres) psql -U forge -d forge \
      -c "CREATE DATABASE forge_demo"
-   JAVA_HOME=<jdk25> FORGE_DB_USERNAME=forge FORGE_DB_PASSWORD=forge \
-     ./mvnw -pl forge-distributions/forge-demo-app -am spring-boot:run
+   JAVA_HOME=<jdk25> ./mvnw -pl forge-distributions/forge-demo-app -am spring-boot:run
    ```
 
 2. 常驻 PostgreSQL（本机已占 5432 的实例）：建独立库 `forge_demo` 后以环境变量指向，
    例如（仅示例，勿写入任何配置文件）：
    `FORGE_DB_URL=jdbc:postgresql://localhost:5432/forge_demo FORGE_DB_USERNAME=postgres FORGE_DB_PASSWORD=change-me`
-   （`change-me` 替换为本机实例真实口令；真实凭据不进版本库）
+   （`postgres`/`change-me` 替换为本机实例真实凭据；真实凭据不进版本库）
 
 体验流（controller 迁入 `controller/app` 包 → platform-web 双端前缀，app 端统一 `/app-api`）：
 `POST /app-api/molds` → `GET /app-api/molds/{id}` → `POST /app-api/molds/{id}/repairs` →

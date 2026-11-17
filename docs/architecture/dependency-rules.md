@@ -21,8 +21,12 @@
 
 上下文承载：`TenantContextHolder`（platform-security，TransmittableThreadLocal）。四个入口统一隔离：
 
-1. **Web**：`TokenAuthFilter`（`FilterOrder.SECURITY_FILTER=-100`，security-starter 装配）认证成功
-   同时填充租户上下文，finally 全清理（SecurityContext / CurrentUser / TenantContext）；
+1. **Web**：`TokenAuthFilter` 由 security-starter 的 SecurityFilterChain **链内**
+   `addFilterBefore(ExceptionTranslationFilter.class)` 注入（不暴露为 @Bean Filter——避免 Boot
+   全局注册二次执行；锚点取 ExceptionTranslationFilter 而非 AuthorizationFilter，401/403 语义
+   实证见 ForgeSecurityAutoConfiguration 注释）。认证成功同时填充租户上下文，finally 全清理
+   （SecurityContext / CurrentUser / TenantContext）。`FilterOrder.SECURITY_FILTER=-100` 常量
+   当前未被引用，仅作全局 Filter 排序段保留（链内 filter 不经 registration order 排序）；
    `FilterOrder.TENANT_FILTER=-120` 段保留给未来 header 直传租户场景，当前无过滤器占用。
 2. **DB**：`@TenantId` 实体（继承 `AbstractTenantEntity`）由 Hibernate 判别式多租户自动过滤/注入，
    resolver（`ForgeTenantIdentifierResolver`，data-starter 经 HibernatePropertiesCustomizer 注册）读
@@ -35,9 +39,19 @@
 4. **事件**：不依赖隐式上下文传播——**跨模块事件 payload 必带 `tenantId` 字段**（契约层面强制），
    异步监听线程不继承 TTL。标准姿势：监听器入口显式 `TenantContextHolder.setTenantId(event.tenantId())`
    → **委托 `REQUIRES_NEW` service 承载业务**（`@ApplicationModuleListener` 自身的 REQUIRES_NEW
-   事务会话在方法体之前开启，判别式租户在会话开启时解析——租户必须早于会话设置）→ finally
+   事务会话在方法体之前开启，判别式租户在会话开启时解析——租户必须早于会话设置；`@TenantIgnore`
+   切面同理须 `@Order(0)` 先于事务拦截器，见 TenantIgnoreAspect）→ finally
    `TenantContextHolder.clear()`。参照 Demo：`MoldRepairRequestedListener` +
    `MaintenanceService#createFromEvent`（Phase 2a 实证定稿的模式）。
+
+### 平台视角的写语义（终审 Important #5）
+
+`@TenantIgnore`/ignore 是**读视角**约定：其下查询解析为平台租户 `"0"`，租户表恒空 → 恒空集。
+但 ignore **不拦截写**——其下 persist/update 租户实体（继承 `AbstractTenantEntity`）时，
+Hibernate 按判别式把 `tenant_id='0'` 写入行，产出**所有租户都不可见的错放数据**（仅平台
+native SQL 可见/可清理）。因此：ignore 只用于跨租户只读查询与全局表操作；需要写租户数据
+必须先恢复具体租户上下文。Phase 2b 将加守护：persist 租户实体时若处于 ignore 则
+fail-fast/warn。
 
 ## Starter 拆分边界
 

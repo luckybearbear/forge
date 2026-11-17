@@ -31,10 +31,12 @@ public class TokenAuthFilter extends OncePerRequestFilter {
                                     FilterChain filterChain) throws ServletException, IOException {
         String token = extractBearer(request);
         if (token != null) {
-            tokenStore.resolve(token).ifPresent(stored -> {
-                tokenStore.refresh(token, refreshTtl); // 滑动续期
-                SecurityContextHolder.getContext().setAuthentication(ForgeAuthentication.of(stored, token));
-                ThreadLocalUserProvider.set(new CurrentUser(stored.grant().userId(), stored.grant().userId()));
+                tokenStore.resolve(token).ifPresent(stored -> {
+                    tokenStore.refresh(token, refreshTtl); // 滑动续期
+                    SecurityContextHolder.getContext().setAuthentication(ForgeAuthentication.of(stored, token));
+                    // TODO(2b): TokenGrant 尚无 username 字段，暂以 userId 兼作 username 占位；
+                    // identity 落地（identity_user 登录）后补真实 username
+                    ThreadLocalUserProvider.set(new CurrentUser(stored.grant().userId(), stored.grant().userId()));
                 if (stored.grant().tenantId() != null) {
                     TenantContextHolder.setTenantId(stored.grant().tenantId());
                 }
@@ -51,7 +53,8 @@ public class TokenAuthFilter extends OncePerRequestFilter {
 
     private String extractBearer(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith(BEARER_PREFIX)) {
+        // RFC 7235 scheme 大小写不敏感：regionMatches(true, ...) 同等接受 Bearer/bearer/BEARER 前缀
+        if (header != null && header.regionMatches(true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {
             return header.substring(BEARER_PREFIX.length());
         }
         return null;

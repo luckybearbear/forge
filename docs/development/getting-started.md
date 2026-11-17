@@ -51,9 +51,9 @@ Demo（forge-demo-app）连 PostgreSQL 运行，本地基础设施二选一（�
 `forge-distributions/forge-demo-app/README.md`）：
 
 1. **compose**：仓库根 `docker compose --profile infra up -d`（PG 5432 / Redis 6379；
-   库 forge / 用户 forge / 密码 forge），再补建 demo 库并指定凭据启动：
+   库 forge / 用户 forge / 密码 forge），再补建 demo 库后启动（Demo 凭据默认即 forge/forge）：
    `docker exec -it $(docker ps -qf name=postgres) psql -U forge -d forge -c "CREATE DATABASE forge_demo"`
-   然后 `FORGE_DB_USERNAME=forge FORGE_DB_PASSWORD=forge` 启动 Demo。
+   然后启动 Demo（无需额外环境变量）。
 2. **常驻实例/容器**：本机已有 PG 占用 5432 时，在该实例建独立库 `forge_demo`，经环境变量
    `FORGE_DB_URL` / `FORGE_DB_USERNAME` / `FORGE_DB_PASSWORD` 指向（真实凭据不进版本库）。
 

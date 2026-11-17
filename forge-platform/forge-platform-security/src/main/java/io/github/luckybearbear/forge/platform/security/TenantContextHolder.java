@@ -35,6 +35,8 @@ public final class TenantContextHolder {
         return getTenantId().orElseThrow(() -> new IllegalStateException("no tenant in current context"));
     }
 
+    // 覆写而非入栈（T2 遗留注记）：嵌套 @TenantIgnore 场景由调用方（TenantIgnoreAspect）
+    // 保存并 finally 还原进入前的原值；本方法独立于 TENANT——clear() 之外的任何路径不复位租户 id。
     public static void setIgnore(boolean ignore) { IGNORE.set(ignore); }
 
     public static boolean isIgnore() { return Boolean.TRUE.equals(IGNORE.get()); }

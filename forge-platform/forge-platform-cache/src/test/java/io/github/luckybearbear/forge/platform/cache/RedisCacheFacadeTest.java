@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class RedisCacheFacadeTest {
@@ -62,9 +63,33 @@ class RedisCacheFacadeTest {
     @Test
     void platformViewUsesPlatformPrefix() {
         CurrentTenantSupplier supplier = supplier(null, true);
-        new RedisCacheFacade(redisTemplate, supplier).put("cfg", 1, Duration.ZERO);
+        Duration ttl = Duration.ofSeconds(60);
+        new RedisCacheFacade(redisTemplate, supplier).put("cfg", 1, ttl);
 
-        verify(valueOps).set(eq(TenantCacheKeys.tenantKey("cfg", supplier)), same(1), same(Duration.ZERO));
+        verify(valueOps).set(eq(TenantCacheKeys.tenantKey("cfg", supplier)), same(1), same(ttl));
+    }
+
+    @Test
+    void zeroTtlMeansNoExpiry() {
+        // 终审 Minor-6：zero/negative/null = 不过期（无 EX/PX 的 SET），非 0 秒 TTL
+        CurrentTenantSupplier supplier = supplier("t-1", false);
+        new RedisCacheFacade(redisTemplate, supplier).put("cfg", 1, Duration.ZERO);
+        verify(valueOps).set(eq(TenantCacheKeys.tenantKey("cfg", supplier)), same(1));
+        verifyNoMoreInteractions(valueOps);
+    }
+
+    @Test
+    void negativeTtlMeansNoExpiry() {
+        CurrentTenantSupplier supplier = supplier("t-1", false);
+        new RedisCacheFacade(redisTemplate, supplier).put("cfg", 1, Duration.ofSeconds(-5));
+        verify(valueOps).set(eq(TenantCacheKeys.tenantKey("cfg", supplier)), same(1));
+    }
+
+    @Test
+    void nullTtlMeansNoExpiry() {
+        CurrentTenantSupplier supplier = supplier("t-1", false);
+        new RedisCacheFacade(redisTemplate, supplier).put("cfg", 1, null);
+        verify(valueOps).set(eq(TenantCacheKeys.tenantKey("cfg", supplier)), same(1));
     }
 
     private CurrentTenantSupplier supplier(String tenantId, boolean ignore) {

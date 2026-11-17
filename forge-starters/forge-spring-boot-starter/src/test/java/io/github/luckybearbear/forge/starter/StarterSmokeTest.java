@@ -1,8 +1,10 @@
 package io.github.luckybearbear.forge.starter;
 
 import io.github.luckybearbear.forge.platform.core.Result;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.ResponseErrorHandler;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.ContentCachingRequestWrapper;
 import org.springframework.http.client.ClientHttpResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -56,9 +59,24 @@ class StarterSmokeTest {
             return Result.ok(FIXED);
         }
 
+        @GetMapping("/smoke/id")
+        Result<Long> bigId() {
+            return Result.ok(123456789012345L);
+        }
+
         @PostMapping("/smoke/echo")
         Result<String> echo(@Valid @RequestBody EchoRequest request) {
             return Result.ok(request.name());
+        }
+
+        @PostMapping("/smoke/echo-cached")
+        Result<String> echoCached(@Valid @RequestBody EchoRequest request, HttpServletRequest raw) {
+            // 终审 Important #2 断言载体：starter 装配的 CacheRequestBodyFilter 生效时，
+            // handler 收到的请求已被 ContentCachingRequestWrapper 包装，且 @RequestBody 消费后缓存可读
+            String cached = raw instanceof ContentCachingRequestWrapper wrapper
+                    ? new String(wrapper.getContentAsByteArray(), StandardCharsets.UTF_8)
+                    : "<unwrapped>";
+            return Result.ok(cached);
         }
     }
 
@@ -78,6 +96,28 @@ class StarterSmokeTest {
                 String.class);
         assertThat(response.getStatusCode().value()).isEqualTo(400);
         assertThat(response.getBody()).contains("FORGE-0400");
+    }
+
+    @Test
+    void longFieldsSerializeAsString() {
+        // 终审 Important #2：starter 注册的 JacksonLongToStringModule 对所有 Jackson 消费者生效，
+        // Long 输出为 JSON 字符串（带引号）而非裸数字
+        ResponseEntity<String> response = rest.getForEntity(url("/smoke/id"), String.class);
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).contains("\"123456789012345\"");
+    }
+
+    @Test
+    void requestBodyCachedForRepeatableRead() {
+        // 终审 Important #2：CacheRequestBodyFilter 默认装配，handler 侧可读已消费的请求体缓存
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<String> response = rest.postForEntity(url("/smoke/echo-cached"),
+                new HttpEntity<>("{\"name\":\"模具\"}", headers),
+                String.class);
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        // data 为缓存的原样请求体（JSON 字符串，序列化时引号被转义）
+        assertThat(response.getBody()).contains("name").contains("模具");
     }
 
     @Test

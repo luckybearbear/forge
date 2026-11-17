@@ -18,7 +18,13 @@ public class RedisCacheFacade implements CacheFacade {
 
     @Override
     public void put(String key, Object value, Duration ttl) {
-        redisTemplate.opsForValue().set(TenantCacheKeys.tenantKey(key, tenantSupplier), value, ttl);
+        String tenantKey = TenantCacheKeys.tenantKey(key, tenantSupplier);
+        if (ttl == null || ttl.isZero() || ttl.isNegative()) {
+            // 不过期（终审 Minor-6）：zero/negative/null 走无 EX/PX 的 SET，而非下发非法 TTL
+            redisTemplate.opsForValue().set(tenantKey, value);
+        } else {
+            redisTemplate.opsForValue().set(tenantKey, value, ttl);
+        }
     }
 
     @Override

@@ -80,6 +80,23 @@ class TokenAuthFilterTest {
     }
 
     @Test
+    void lowercaseBearerPrefixStillAuthenticates() throws ServletException, IOException {
+        // RFC 7235 scheme 大小写不敏感（终审 Minor）：bearer/Bearer 同等接受
+        StoredToken token = store.create(
+                new TokenGrant("u-2", "t-2", "MEMBER", Set.of()), Duration.ofHours(1));
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/app-api/x");
+        request.addHeader("Authorization", "bearer " + token.token());
+
+        MockFilterChain chain = new MockFilterChain(new HttpServlet() {
+            @Override
+            protected void service(HttpServletRequest req, HttpServletResponse res) {
+                assertThat(TenantContextHolder.getRequiredTenantId()).isEqualTo("t-2");
+            }
+        });
+        filter.doFilter(request, new MockHttpServletResponse(), chain);
+    }
+
+    @Test
     void validTokenIsRefreshed() throws ServletException, IOException {
         StoredToken token = store.create(
                 new TokenGrant("u-1", "t-1", "MEMBER", Set.of()), Duration.ofMillis(200));
