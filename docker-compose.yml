@@ -1,4 +1,4 @@
-# Phase 1 可选基础设施栈（Demo 不依赖）：docker compose --profile infra up -d
+# 可选基础设施栈（PG 供 demo 连库，Redis 供 2b 认证）：docker compose --profile infra up -d
 services:
   postgres:
     image: postgres:18-alpine

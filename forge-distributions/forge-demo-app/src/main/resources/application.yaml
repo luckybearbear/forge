@@ -1,10 +1,25 @@
 spring:
   application:
     name: forge-demo-app
+  datasource:
+    # 本地/部署经环境变量覆盖；默认指向本机 PostgreSQL 的 forge_demo 库（README：compose 或常驻实例 + 建库）
+    url: ${FORGE_DB_URL:jdbc:postgresql://localhost:5432/forge_demo}
+    username: ${FORGE_DB_USERNAME:postgres}
+    password: ${FORGE_DB_PASSWORD:forge}
+  flyway:
+    enabled: true # 迁移脚本 db/migration（demo 表）；event_publication 由 Modulith schema-init 负责
+  jpa:
+    hibernate:
+      ddl-auto: validate # 表结构唯一权威是 Flyway，JPA 只校验映射
+  modulith:
+    events:
+      jdbc:
+        schema-initialization:
+          enabled: true # event_publication 登记表（与 data-starter 低优先级默认同值，显式声明便于阅读）
 server:
   port: 8080
 forge:
   openapi:
     title: Forge Demo API
-    description: 模块化单体演示：mold + maintenance（契约 + 事件 + 边界）
+    description: 模块化单体演示：mold + maintenance（契约 + 事件 + 连库租户隔离）
     version: 1.0.0-SNAPSHOT

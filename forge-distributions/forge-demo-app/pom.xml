@@ -20,17 +20,21 @@
       <groupId>io.github.luckybearbear</groupId>
       <artifactId>forge-contract-mold</artifactId>
     </dependency>
+    <!-- 连库升级（Task 11）：JPA + 判别式租户多租户 + 审计 + Flyway + Modulith 事件 JDBC 登记表 -->
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-data-starter</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-starter-core</artifactId>
     </dependency>
-    <!-- Modulith 2.x 将 @ApplicationModuleListener 从 core 拆分至 events-api 工件 -->
+    <!-- Modulith 2.x 将 @ApplicationModuleListener 从 core 拆分至 events-api 工件（事件持久化基础设施
+         events-core/events-jdbc 经 forge-data-starter → spring-modulith-starter-jdbc 传递引入，Task 11 恢复异步监听） -->
     <dependency>
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-events-api</artifactId>
     </dependency>
-    <!-- 注：events-core（@ApplicationModuleListener 投递基础设施）需要 EventPublicationRegistry 持久化存储
-         （JPA/JDBC/Mongo），Phase 2 随 PostgreSQL 引入；当前 listener 用同步 @EventListener（见 brief Step 3 降级）。 -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
@@ -39,6 +43,12 @@
     <dependency>
       <groupId>org.springframework.modulith</groupId>
       <artifactId>spring-modulith-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- 容器集成测试基座（AbstractIntegrationTest：PG/Redis @ServiceConnection；TenantTestSupport） -->
+    <dependency>
+      <groupId>io.github.luckybearbear</groupId>
+      <artifactId>forge-platform-test</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

@@ -1,6 +1,8 @@
-package io.github.luckybearbear.forge.demo.mold.api;
+package io.github.luckybearbear.forge.demo.mold.controller.app;
 
 import io.github.luckybearbear.forge.contract.mold.MoldDTO;
+import io.github.luckybearbear.forge.demo.mold.api.RegisterMoldRequest;
+import io.github.luckybearbear.forge.demo.mold.api.RequestRepairRequest;
 import io.github.luckybearbear.forge.demo.mold.app.MoldService;
 import io.github.luckybearbear.forge.platform.core.Result;
 import jakarta.validation.Valid;
@@ -11,8 +13,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * app 端模具接口：包名含 .controller.app. → platform-web 双端前缀映射自动前插 /app-api
+ * （spec §6.5），实际路径 /app-api/molds、/app-api/molds/{id}、/app-api/molds/{id}/repairs。
+ */
 @RestController
-@RequestMapping("/api/molds")
+@RequestMapping("/molds")
 public class MoldController {
 
     private final MoldService moldService;

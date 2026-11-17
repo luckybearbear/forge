@@ -1,5 +1,6 @@
-package io.github.luckybearbear.forge.demo.maintenance.api;
+package io.github.luckybearbear.forge.demo.maintenance.controller.app;
 
+import io.github.luckybearbear.forge.demo.maintenance.api.MaintenanceOrderDTO;
 import io.github.luckybearbear.forge.demo.maintenance.app.MaintenanceService;
 import io.github.luckybearbear.forge.platform.core.Result;
 import java.util.List;
@@ -9,8 +10,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * app 端维修单接口：包名含 .controller.app. → 自动前插 /app-api（spec §6.5），
+ * 实际路径 /app-api/maintenances、/app-api/maintenances/{id}。
+ */
 @RestController
-@RequestMapping("/api/maintenances")
+@RequestMapping("/maintenances")
 public class MaintenanceController {
 
     private final MaintenanceService maintenanceService;
