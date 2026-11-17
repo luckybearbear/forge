@@ -307,6 +307,39 @@ class AuthorizationServiceIntegrationTest extends AbstractIntegrationTest {
                 .filteredOn("ADMIN"::equals).hasSize(1);
     }
 
+    /**
+     * 删角色即时失效快照（评审 Important-1）：用户双角色快照缓存后删除其一——被删角色权限即时
+     * 不再出现（不残留至 TTL），另一角色权限保留。
+     */
+    @Test
+    void deletingRoleEvictsAffectedUserSnapshotsImmediately() {
+        String userId = "u-role-delete";
+        RoleDTO doomed = TenantTestSupport.runAsResult(T1, () ->
+                roleService.create("DOOMED_ROLE", "待删角色", DataScope.TENANT));
+        RoleDTO survivor = TenantTestSupport.runAsResult(T1, () ->
+                roleService.create("SURVIVOR_ROLE", "保留角色", DataScope.SELF));
+        TenantTestSupport.runAs(T1, () -> {
+            roleService.assignPermissions(doomed.id(), seedIds("mold:read"));
+            roleService.assignPermissions(survivor.id(), seedIds("mold:create"));
+            userRoleService.assignToUser(userId, Set.of(doomed.id(), survivor.id()));
+        });
+
+        // 快照已缓存（含两角色权限点）
+        assertThat(userPermissionsQuery.authoritiesOf(T1, userId))
+                .containsExactlyInAnyOrder("mold:read", "mold:create");
+
+        // 删除其一 → evict 生效：即时只余保留角色权限（未删的快照残留 = Important-1 缺陷）
+        TenantTestSupport.runAs(T1, () -> roleService.delete(doomed.id()));
+        assertThat(userPermissionsQuery.authoritiesOf(T1, userId))
+                .containsExactlyInAnyOrder("mold:create");
+
+        // 角色已软删：本租户再查 AUTH-0404
+        String deletedId = doomed.id();
+        assertThatThrownBy(() -> TenantTestSupport.runAsResult(T1, () -> roleService.findById(deletedId)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining(deletedId);
+    }
+
     /** 双租户隔离：快照物理键 t:{tenantId}:auth:perm:{userId}——同 userId 两租户各自成快照。 */
     @Test
     void snapshotKeysArePhysicallyTenantIsolated() {

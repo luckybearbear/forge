@@ -7,8 +7,10 @@ token 存储默认 Redis（随件携带 data-redis 栈），无 Redis 时自动�
 ## 自动装配（`ForgeSecurityAutoConfiguration` + `ForgeTokenStoreFallbackAutoConfiguration`）
 
 - `SecurityFilterChain`（`@ConditionalOnMissingBean`，应用可整体替换）：无状态 + CSRF off +
-  permit-all（`forge.security.permit-all`，默认登录/健康/文档路径）+ 其余 authenticated；
-  401/403 → `ForgeSecurityResponses`（`FORGE-0401/0403`）
+  permit-all（`forge.security.permit-all`，默认登录/健康/文档路径）+ **`/admin-api/**` 需
+  `hasAuthority("PLATFORM")`**（Task 6 评审 Important-2：MEMBER token 403 FORGE-0403；登录例外
+  `/admin-api/auth/login` 在 permitAll 先匹配不受影响；identity adminLogin grant 携带 PLATFORM
+  authority）+ 其余 authenticated；401/403 → `ForgeSecurityResponses`（`FORGE-0401/0403`）
 - `TokenAuthFilter` 以 `new` 经 `addFilterBefore` 注入链（**不暴露为 @Bean Filter**，防 Boot 全局注册二次执行）：
   认证 + 租户/用户上下文填充 + 滑动续期（TTL = `forge.security.token-ttl`），链尾 finally 清理
 - `TokenStore`：Redis 在类路径（`RedisOperations`）且未自定义 → `RedisTokenStore`；否则由
@@ -56,6 +58,9 @@ token 存储默认 Redis（随件携带 data-redis 栈），无 Redis 时自动�
 `SecurityStarterIntegrationTest`（继承 platform-test 的 `AbstractIntegrationTest`，真实 redis:8-alpine 容器
 `@ServiceConnection` 直连）：未认证 401 `FORGE-0401` / 有效 token 200 + 租户填充（断言 `RedisTokenStore` 类型防兜底静默）/
 revoke 后 401 / `@TenantIgnore` 平台视角——全绿（RED 复现：imports 注册行注释后 4/4 context 失败）。
+
+`adminApiRequiresPlatformAuthority`（评审 Important-2）：MEMBER token 访问 /admin-api 探针 403
+`FORGE-0403` / PLATFORM token 200 / 登录例外路径不落 403。
 
 `TokenRevocationIntegrationTest`（Task 4 安全输入 2，同容器）：`revokeByUserId` 只吊销目标用户 +
 索引落盘/清理 + 幂等；`UserPasswordChanged` 事件 → 旧 token 即时不可 resolve（RED：监听器未注册时

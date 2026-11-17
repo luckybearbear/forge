@@ -41,8 +41,11 @@ permission 软删后的悬挂授权在查询侧自然失效（`findAuthorityCode
 - key：`auth:perm:{userId}` → CacheFacade 落为 **`t:{tenantId}:auth:perm:{userId}`**，TTL **5min**；
   值载体 `List<String>`（Jackson default-typing 往返最稳），命中侧归一为不可变 `Set<String>`。
 - **程序式**（非 @Cacheable）：写路径显式失效——`RoleService.assignPermissions`（按持有角色的
-  userId 集合 evict + 发布 RolePermissionsChanged）与 `UserRoleService.assignToUser`（按该 userId
-  evict）→ 变更**即时生效**（不等 TTL）；TTL 仅兜底（如 permission 字典删除的悬挂快照）。
+  userId 集合 evict + 发布 RolePermissionsChanged）、`RoleService.delete`（级联清理前收集持有者、
+  删后逐一 evict——评审 Important-1）与 `UserRoleService.assignToUser`（按该 userId evict）→
+  变更**即时生效**（不等 TTL）；TTL 仅兜底（如 permission 字典删除的悬挂快照）。evict 均为
+  「业务事务内、DB 写后逐出」——并发读在提交与逐出之间回填陈旧快照的经典 cache-aside 竞态由
+  TTL 5min 有界兜底（双删/版本化 key 属后续演进，javadoc 注记）。
 - **租户上下文与事务（identity 登录范式）**：登录链调用时线程无租户上下文——按参数 tenantId 显式
   set（保存/还原进入前状态，finally）；DB 读走 REQUIRES_NEW 只读事务（新会话保证 @TenantId 判别式
   在 set 之后解析——OSIV 消费应用下 REQUIRED 会挂请求级会话恒查空，同 AuthService 语义）。

@@ -75,6 +75,12 @@ public class ForgeSecurityAutoConfiguration {
          * 判定 → 恒走 accessDeniedHandler → 403 而非 401。锚 {@code ExceptionTranslationFilter}
          * （其之前）时 finally 清理发生在 ETF 处理完异常之后，401（entryPoint，含匿名）与
          * 403（已认证越权）语义恢复正确。
+         *
+         * <p><b>/admin-api/** 平台门槛（Task 6 评审 Important-2）</b>：置于 permit-all 之后、
+         * anyRequest 之前（首个匹配胜——{@code /admin-api/auth/login} 已在 permitAll 默认项，不受影响）。
+         * MEMBER token（无 PLATFORM authority）访问 admin 面 → 403 FORGE-0403；admin 端登录 grant 由
+         * service-identity 携带 {@code PLATFORM} authority。需要放开时：自定义 SecurityFilterChain 整体
+         * 替换（@ConditionalOnMissingBean 让位语义）。
          */
         @Bean
         @ConditionalOnMissingBean(SecurityFilterChain.class)
@@ -86,6 +92,7 @@ public class ForgeSecurityAutoConfiguration {
                             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                     .authorizeHttpRequests(authorize -> {
                         properties.permitAll().forEach(path -> authorize.requestMatchers(path).permitAll());
+                        authorize.requestMatchers("/admin-api/**").hasAuthority("PLATFORM");
                         authorize.anyRequest().authenticated();
                     })
                     .exceptionHandling(handling -> handling

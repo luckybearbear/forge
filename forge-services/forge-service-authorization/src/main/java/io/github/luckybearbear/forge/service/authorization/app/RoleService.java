@@ -92,28 +92,36 @@ public class RoleService {
         return toDto(entity);
     }
 
-    /** 删除（软删）：连带清理本租户内该角色的授权与用户分配（同租户表，判别式可见）。 */
+    /**
+     * 删除（软删）：连带清理本租户内该角色的授权与用户分配（同租户表，判别式可见），
+     * 并对持有该角色的用户逐一失效权限快照（评审 Important-1：被删角色的权限不得在快照残留至 TTL）。
+     */
     @Transactional
     public void delete(String id) {
         RoleEntity entity = requireRole(id);
+        Set<String> affectedUserIds = userIdsHoldingRole(id);
         rolePermissionRepository.deleteByRoleId(id);
         userRoleRepository.deleteByRoleId(id);
         roleRepository.delete(entity);
+        affectedUserIds.forEach(userId -> cacheFacade.evict(UserPermissionsQueryImpl.cacheKey(userId)));
     }
 
     /**
      * 全量替换角色授权：任一权限点缺失 AUTH-0414；替换后发布 RolePermissionsChanged（业务事务内，
      * modulith 登记随原子提交）并按持有该角色的 userId 显式 evict 快照缓存（即时失效）。
+     *
+     * <p><b>evict 时序注记（cache-aside 竞态）</b>：evict 在业务事务内、DB 写后执行（先写后逐出）——
+     * 并发读若在「读旧库 → 本事务提交+evict 之后」才回填缓存，可短暂重填陈旧快照（经典竞态）；
+     * TTL 5min 有界兜底，强一致失效（双删/版本化 key）属后续演进。失效名单在写前收集
+     * （deleteByRoleId 之后 user_role 即不可见）。
      */
     @Transactional
     public RoleDTO assignPermissions(String roleId, Set<String> permissionIds) {
         requireRole(roleId);
         permissionService.requireAllByIds(permissionIds);
 
-        // 失效名单先取（deleteByRoleId 后 user_role 不受影响——按角色取用户分配，非授权）
-        Set<String> affectedUserIds = userRoleRepository.findByRoleId(roleId).stream()
-                .map(userRole -> userRole.getUserId())
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        // 失效名单先取（deleteByRoleId 后 role_permission 行已不可见；用户名单来自 user_role）
+        Set<String> affectedUserIds = userIdsHoldingRole(roleId);
 
         rolePermissionRepository.deleteByRoleId(roleId);
         permissionIds.forEach(permissionId ->
@@ -123,6 +131,13 @@ public class RoleService {
                 TenantContextHolder.getRequiredTenantId(), roleId, Instant.now()));
         affectedUserIds.forEach(userId -> cacheFacade.evict(UserPermissionsQueryImpl.cacheKey(userId)));
         return findById(roleId);
+    }
+
+    /** 持有该角色的用户集合（当前租户；失效名单用——须在任何级联删除/替换之前收集）。 */
+    private Set<String> userIdsHoldingRole(String roleId) {
+        return userRoleRepository.findByRoleId(roleId).stream()
+                .map(userRole -> userRole.getUserId())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
     private RoleEntity requireRole(String id) {

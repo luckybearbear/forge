@@ -46,7 +46,9 @@ import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
  */
 @AutoConfiguration(before = org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration.class)
 @ConditionalOnClass(RedisOperations.class)
-@EnableCaching
+@EnableCaching // 库强加（幂等——重复声明无副作用）：全局启用缓存切面（@Cacheable 等）。
+               // 有意为之：本 starter 装配 CacheManager 即预期缓存注解可用；应用拒绝切面时
+               // 可排除本自动配置整体让位（覆盖治理点为整模块）。
 public class ForgeCacheAutoConfiguration {
 
     /**

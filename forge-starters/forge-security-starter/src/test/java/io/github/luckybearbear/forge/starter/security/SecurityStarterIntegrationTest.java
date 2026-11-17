@@ -49,6 +49,12 @@ class SecurityStarterIntegrationTest extends AbstractIntegrationTest {
             String open() {
                 return "ignore=" + TenantContextHolder.isIgnore();
             }
+
+            /** admin 面探针（路径硬编码 /admin-api/**——链门槛匹配按路径，与包前缀机制无关）。 */
+            @GetMapping("/admin-api/probe/dict")
+            String adminApiDict() {
+                return "admin-ok";
+            }
         }
     }
 
@@ -122,6 +128,36 @@ class SecurityStarterIntegrationTest extends AbstractIntegrationTest {
         assertThat(response.getBody()).contains("ignore=true");
     }
 
+    /**
+     * /admin-api/** 平台门槛（Task 6 评审 Important-2）：MEMBER token（无 PLATFORM authority）→
+     * 403 FORGE-0403；PLATFORM token（identity adminLogin grant 形态）→ 200。login 例外路径
+     * （/admin-api/auth/login 在 permitAll 默认项、先于门槛匹配）不回归——见下方直连断言。
+     */
+    @Test
+    void adminApiRequiresPlatformAuthority() {
+        // MEMBER（有业务 authority 但无 PLATFORM）→ 403 统一体
+        StoredToken member = tokenStore.create(memberGrant("u-admin-1", "t-7"), Duration.ofHours(8));
+        ResponseEntity<String> rejected = rest.exchange(url("/admin-api/probe/dict"),
+                org.springframework.http.HttpMethod.GET,
+                new HttpEntity<>(bearer(member.token())), String.class);
+        assertThat(rejected.getStatusCode().value()).isEqualTo(403);
+        assertThat(rejected.getBody()).contains("FORGE-0403");
+
+        // PLATFORM（adminLogin grant 形态：authorities=[PLATFORM]）→ 200
+        StoredToken platform = tokenStore.create(platformGrant("u-admin-2"), Duration.ofHours(8));
+        ResponseEntity<String> allowed = rest.exchange(url("/admin-api/probe/dict"),
+                org.springframework.http.HttpMethod.GET,
+                new HttpEntity<>(bearer(platform.token())), String.class);
+        assertThat(allowed.getStatusCode().value()).isEqualTo(200);
+        assertThat(allowed.getBody()).contains("admin-ok");
+
+        // 登录例外不受门槛影响（permitAll 先匹配）：未认证也非 403（permit-all 下 401/404 皆可，此处
+        // 只断言不落 403——路径无控制器时 401 语义由链前段决定，403 才说明门槛误吞）
+        ResponseEntity<String> loginPath = rest.exchange(url("/admin-api/auth/login"),
+                org.springframework.http.HttpMethod.GET, new HttpEntity<>(bearer(member.token())), String.class);
+        assertThat(loginPath.getStatusCode().value()).isNotEqualTo(403);
+    }
+
     @Test
     void refreshDoesNotResurrectRevokedToken() {
         // refresh Lua 条件写原子化（2b 前置加固）：GET 存在才 SET——revoke 后 refresh
@@ -146,6 +182,14 @@ class SecurityStarterIntegrationTest extends AbstractIntegrationTest {
 
     private static TokenGrant grant(String userId, String tenantId) {
         return new TokenGrant(userId, tenantId, "USER", Set.of("x"));
+    }
+
+    private static TokenGrant platformGrant(String userId) {
+        return new TokenGrant(userId, null, "PLATFORM", Set.of("PLATFORM"));
+    }
+
+    private static TokenGrant memberGrant(String userId, String tenantId) {
+        return new TokenGrant(userId, tenantId, "MEMBER", Set.of("x"));
     }
 
     private static HttpHeaders bearer(String token) {

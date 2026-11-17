@@ -242,12 +242,14 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(response.tenantId()).isNull();
         assertThat(response.expiresAt()).isAfter(java.time.Instant.now());
 
-        // grant：admin 端 = (adminId, null, PLATFORM, 空集)——tenantId=null 即平台 token
+        // grant：admin 端 = (adminId, null, PLATFORM, [PLATFORM])——tenantId=null 即平台 token；
+        // authorities 携带 PLATFORM（评审 Important-2：/admin-api/** 面 hasAuthority("PLATFORM") 门禁信号）
         Optional<StoredToken> resolved = tokenStore.resolve(response.token());
         assertThat(resolved).isPresent();
         assertThat(resolved.get().grant().tenantId()).isNull();
         assertThat(resolved.get().grant().userType()).isEqualTo(AuthService.USER_TYPE_PLATFORM);
-        assertThat(resolved.get().grant().authorities()).isEmpty();
+        assertThat(resolved.get().grant().authorities())
+                .containsExactly(AuthService.PLATFORM_AUTHORITY);
 
         // admin 侧同样不泄露存在性：坏密码/未知管理员同码同文案
         assertThat(catchAdminLogin("admin", "wrong-pass").getMessage())

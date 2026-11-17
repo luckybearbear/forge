@@ -48,8 +48,10 @@
   authorization 服务未装配时缺省空集 + **首次 warn 一次**（identity 独立可跑）；Task 6 装配后
   登录 grant 自动携带真实权限点。
 - **token**：app 端 `TokenGrant(userId, tenantId, "MEMBER", 权限集)`；admin 端
-  `TokenGrant(adminId, null, "PLATFORM", Set.of())`——`tenantId=null` 即平台 token
-  （TokenAuthFilter 不填充租户上下文，2a 行为）。TTL 取 `forge.security.token-ttl`（与滑动续期同源，默认 8h）。
+  `TokenGrant(adminId, null, "PLATFORM", [PLATFORM])`——`tenantId=null` 即平台 token
+  （TokenAuthFilter 不填充租户上下文，2a 行为）；authorities 携带 `PLATFORM`（Task 6 评审
+  Important-2：security-starter 默认链以 `hasAuthority("PLATFORM")` 守 /admin-api/** 面，MEMBER
+  token 403）。TTL 取 `forge.security.token-ttl`（与滑动续期同源，默认 8h）。
 - **logout**：控制器自 `Authorization: Bearer` 提取当前 token → `tokenStore.revoke`；缺失/非 Bearer
   幂等无害。**/me**：读 SecurityContext 的 `ForgeAuthentication` → userId/tenantId/userType/authorities。
 
@@ -89,7 +91,7 @@
 security-starter 的 **RedisTokenStore**）：app 登录成功（token 可 resolve、grant 含租户/MEMBER/
 空权限集 + finally clear 卫生）、未知租户 TENANT-0404/404、停用租户 TENANT-0423、
 **坏凭据三态同码同文案**（用户不存在/密码错/账号停用，不泄露）、admin 登录（tenantId=null +
-PLATFORM + 空集；坏凭据同码）、logout 后 resolve 为空、改密（旧密码错 IDENT-0401/弱新密码
+PLATFORM + authorities=[PLATFORM]（admin-api 面准入）；坏凭据同码）、logout 后 resolve 为空、改密（旧密码错 IDENT-0401/弱新密码
 IDENT-0400/成功发 UserPasswordChanged 且旧密码失败新密码可登录）、**登录恒时**（未命中/密码错/停用/
 成功各恰一次 bcrypt，可计数桩断言）、**改密即时吊销既有 token**（两 token 改密后双双失效，新密码
 可登，identity × security-starter 联测）、用户创建重复名 IDENT-0409/409
