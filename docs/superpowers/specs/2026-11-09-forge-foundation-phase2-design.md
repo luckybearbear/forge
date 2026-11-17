@@ -230,6 +230,14 @@ demo-app 依赖三 starter（web + data + security）。
 5. demo swagger 双端完整可体验（登录获取 token → 调用业务端点）
 6. `./mvnw verify` 全绿（总数以实施为准）
 
+## 11.1 Phase 2a 修订记录（终审裁定，2026-11）
+
+- **§6.6 访问/错误日志落库 → 移交 2b**（原列于 §2.1-2a 第 10 项后半）：2a 只交付 JPA Auditing 桥接；日志落库随 2b identity 的用户/租户上下文一起实施与验收（userId/tenant 字段此时才可真实填充）。属交付清单与验收清单的接缝漏项，非技术降级。
+- **§6.4 勘误**：ignore/无租户的 cache key 实现为 `p:{key}` 前缀（实现优于原文"无前缀"，已命名空间化），以 `docs/architecture/dependency-rules.md` 记载的实现为准。
+- **§6.1 勘误**：`forge.security.tenant.ignore-urls` 未实施且判定为不需要——登录/租户注册等端点触碰的是非 @TenantId 全局表，无需 URL 级逃生口。
+- **§6.2 勘误**：TokenStore"无 Redis 配置时降级"实为"Redis 类路径缺席时降级"（类路径在场而无服务器时不降级，认证请求将报连接错误）——2b 决定是否做连接健康度降级。
+- **§6.5 补充**：平台视角（ignore）是**读视角**；其下的写操作会落 `tenant_id='0'` 行（视为错放数据，所有租户不可见）。2b 增加 persist 守护。
+
 ## 12. 风险与实施时验证项
 
 | 风险/不确定 | 应对 |
