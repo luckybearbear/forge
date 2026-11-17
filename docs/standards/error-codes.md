@@ -17,5 +17,5 @@
   SecurityFilterChain 对未认证/无权限请求分别输出 401/403 + 统一 `Result`（原 Phase 1 预留码转正）。
 - **FORGE-0423（请求冲突）：已启用**——platform-web 全局异常处理将乐观锁冲突
   （ObjectOptimisticLockingFailureException）映射为 409 + FORGE-0423。
-- 其余预置码（0400/0404/0405/0415/0500/0501）已由 platform-web 全局异常处理器按异常类型输出；
-  FORGE-0429（限流）仍为预留，随限流能力启用。
+- 其余预置码（0400/0404/0405/0415/0500）已由 platform-web 全局异常处理器按异常类型输出；
+  FORGE-0429（限流）、FORGE-0501（功能未实现）仍为预留，随对应能力启用。

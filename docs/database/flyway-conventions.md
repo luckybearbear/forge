@@ -5,7 +5,7 @@
   `V202611200930__create_tenant_table.sql`
 - 一次性变更：已合入 main 的脚本禁止修改，只能新增
 - 每个业务域的表使用域前缀（如 `mold_`、`identity_`），禁止跨域外键（模块边界）
-- 基线：Phase 2 第一个脚本为 baseline，随后按时间戳递增
+- 基线：Phase 2a 第一个脚本为 baseline，随后按时间戳递增
 
 ## 多模块 classpath 合并执行
 
