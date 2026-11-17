@@ -13,5 +13,9 @@
   <name>Forge :: Contracts</name>
   <modules>
     <module>forge-contract-mold</module>
+    <module>forge-contract-tenant</module>
+    <module>forge-contract-identity</module>
+    <module>forge-contract-organization</module>
+    <module>forge-contract-authorization</module>
   </modules>
 </project>

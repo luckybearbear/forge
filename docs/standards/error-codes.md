@@ -7,6 +7,10 @@
 |---|---|---|---|
 | FORGE- | 平台 | platform-core `ErrorCodes` | 启用 |
 | MOLD- | 模具域（Demo） | forge-contract-mold `MoldErrorCodes` | 启用 |
+| TENANT- | 租户域 | forge-contract-tenant `TenantErrorCodes` | 启用 |
+| IDENT- | 身份域 | forge-contract-identity `IdentityErrorCodes` | 启用 |
+| ORG- | 组织域 | forge-contract-organization `OrganizationErrorCodes` | 启用 |
+| AUTH- | 授权域 | forge-contract-authorization `AuthorizationErrorCodes` | 启用 |
 | MAINT- | 维修域（Demo） | demo maintenance 模块 `MaintenanceErrorCodes` | 启用（Demo） |
 
 新增前缀在此登记后方可使用。平台预置码见 `ErrorCodes` javadoc（FORGE-0400/0401/0403/0404/0405/0415/0423/0429/0500/0501）。

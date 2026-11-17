@@ -60,6 +60,10 @@
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-storage</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-platform-test</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-mold</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-tenant</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-identity</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-organization</artifactId><version>${revision}</version></dependency>
+      <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-contract-authorization</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-spring-boot-starter</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-data-starter</artifactId><version>${revision}</version></dependency>
       <dependency><groupId>io.github.luckybearbear</groupId><artifactId>forge-security-starter</artifactId><version>${revision}</version></dependency>
