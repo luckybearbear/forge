@@ -37,4 +37,11 @@ export default tseslint.config(
       'vue/multi-word-component-names': 'off',
     },
   },
+  {
+    // 结构壳组件沿用计划文件清单的单词名（layouts/Layout.vue、components/Breadcrumb.vue）
+    files: ['apps/*/src/layouts/Layout.vue', 'apps/*/src/components/Breadcrumb.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
+    },
+  },
 );
