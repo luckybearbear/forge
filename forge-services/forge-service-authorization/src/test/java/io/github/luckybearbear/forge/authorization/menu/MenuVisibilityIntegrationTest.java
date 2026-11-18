@@ -224,6 +224,34 @@ class MenuVisibilityIntegrationTest extends AbstractIntegrationTest {
         assertThat(flattenCodes(menuQueryService.visibleMenus(Set.of("m-zeta")))).contains("m-zeta");
     }
 
+    // ---- Task 5 手检流回归（DEFECT-1）：seed 菜单行可更新 ----
+
+    /**
+     * V202611190000 菜单 seed 的 INSERT 未含 version 列（auth_permission.version 可空无默认）——
+     * NULL 乐观锁版本令 seed 行首次脏写在提交期 {@code LongJavaType.next} NPE（手检流 HTTP 实证
+     * PUT /admin-api/permissions/{seed 行} → 500）。V202611190100 幂等回填 version=0（与基线 seed
+     * V202611181300 显式 0 及 JPA 新建行口径一致）后：全表无 NULL 版本行，seed 行可编辑且版本自增。
+     */
+    @Test
+    void seededMenuRowsAreUpdatableAfterVersionBackfill() {
+        assertThat(permissionRepository.findAll().stream().filter(row -> row.getVersion() == null).toList())
+                .isEmpty(); // 回填后无 NULL 版本行（三条菜单 seed 全覆盖）
+        assertThat(permissionRepository.findByCode("dashboard").orElseThrow().getVersion()).isZero();
+        assertThat(permissionRepository.findByCode("sys-dir").orElseThrow().getVersion()).isZero();
+        assertThat(permissionRepository.findByCode("tenant:manage").orElseThrow().getVersion()).isZero();
+
+        // seed 行真实脏写（sort 10→20）：修复前此处提交期 NPE（TransactionSystemException → 500）
+        PermissionEntity dashboard = permissionRepository.findByCode("dashboard").orElseThrow();
+        permissionService.update(dashboard.getId(), null, null, null, null, null, null, 20, null);
+        PermissionEntity updated = permissionRepository.findByCode("dashboard").orElseThrow();
+        assertThat(updated.getSort()).isEqualTo(20);
+        assertThat(updated.getVersion()).isEqualTo(1); // 乐观锁版本自增 = 写入真实落库
+
+        // 复原 seed sort=10（version 继续前进，字典状态不因测试漂移）
+        permissionService.update(dashboard.getId(), null, null, null, null, null, null, 10, null);
+        assertThat(permissionRepository.findByCode("dashboard").orElseThrow().getSort()).isEqualTo(10);
+    }
+
     // ---- helpers ----
 
     private PermissionDTO menu(String code, String parentId, Integer sort) {

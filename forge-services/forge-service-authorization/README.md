@@ -26,7 +26,9 @@
   mold:repair/maint:read（均 API 型）；`V202611190000__alter_permission_menu.sql`（菜单切片）——
   auth_permission +parent_id/path/component/icon/sort/visible 六列 + **菜单树 seed**（dashboard/
   sys-dir/tenant:manage；role:manage 经 UPDATE 转 MENU 挂 sys-dir，component 与 Task 4 页面文件
-  一一对应）。
+  一一对应）；`V202611190100__backfill_auth_permission_version.sql`——菜单 seed 三行 version 回填 0
+  （原 INSERT 漏列致 NULL 乐观锁版本，seed 行首次脏写提交期 NPE → 500；Task 5 手检流 HTTP 实证
+  后修复，回归测试 `seededMenuRowsAreUpdatableAfterVersionBackfill`）。
 
 ## 表结构
 

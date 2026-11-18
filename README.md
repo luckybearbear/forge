@@ -38,6 +38,24 @@ SPRING_PROFILES_ACTIVE=demo ./mvnw -pl forge-distributions/forge-demo-app -am sp
 
 种子表/权限快照（变更需重登）/审计落表等细节见 `forge-distributions/forge-demo-app/README.md` 与 `docs/development/getting-started.md`。
 
+### 前端快速开始（forge-web 管理台）
+
+前置：Node ≥ 20.19（推荐 22）+ pnpm ≥ 10（`npm i -g pnpm@10` 或 corepack）。
+
+```bash
+# 1) 起后端（demo profile，默认 8080；种子含平台管理员 admin/admin123）
+SPRING_PROFILES_ACTIVE=demo ./mvnw -pl forge-distributions/forge-demo-app -am spring-boot:run
+
+# 2) 起前端（forge-web/ 为 pnpm workspace，与 Maven 构建互不相扰）
+cd forge-web && pnpm install && pnpm dev   # admin 管理台 http://localhost:5173
+```
+
+- 登录：`admin / admin123`（初始口令——首次登录后立即经右上用户下拉改密；改密吊销既有 token 需重登）；
+- 代理模式：dev 下 `/admin-api` 由 vite proxy 转发到 `http://localhost:8080`（无 CORS）。
+  **后端不在 8080 时**（如被占改用 18080）：改 `forge-web/apps/admin/vite.config.ts` 的 proxy
+  target，或让后端仍用 8080、前端以 `.env.local` 的 `VITE_PORT` 换端口——详见 `forge-web/README.md`；
+- 全量校验：`cd forge-web && pnpm -r lint && pnpm -r build && pnpm -r test`（CI 的 web job 同款）。
+
 ## 模块导览
 
 | 目录 | 职责 | 状态 |
@@ -45,10 +63,12 @@ SPRING_PROFILES_ACTIVE=demo ./mvnw -pl forge-distributions/forge-demo-app -am sp
 | forge-bom | 依赖版本唯一入口 | ✅ |
 | forge-platform/* | 日志/异常/审计/数据(JPA 租户基线)/缓存(租户前缀)/安全(token+租户上下文)/存储技术底座 | 按模块 |
 | forge-contracts/* | 跨模块接口/DTO/事件/错误码 | ✅ 示例 |
-| forge-services | 业务共享服务：tenant（租户/套餐）/ identity（双端认证/用户）/ organization（组织树/岗位）/ authorization（角色/权限）——自动配置库形态，引依赖即得 bean/建表/路由 | ✅ 四服务（2b） |
+| forge-services | 业务共享服务：tenant（租户/套餐）/ identity（双端认证/用户）/ organization（组织树/岗位）/ authorization（角色/权限+菜单合一模型）——自动配置库形态，引依赖即得 bean/建表/路由 | ✅ 四服务（2b） |
 | forge-apps | 具体业务应用 | 📦 Phase 2+ |
 | forge-starters | 统一自动装配：web 基线（forge-spring-boot-starter）+ 按需 data / security / cache starter + 组合型 audit starter（访问/错误日志落库） | ✅ |
 | forge-distributions | 应用组装（先看 forge-demo-app） | ✅ Demo（连库多租户） |
+| forge-web | 前端 web 系（pnpm workspace）：apps/admin 管理台（登录/动态路由/权限指令/租户/权限字典）+ packages/shared 请求层与类型 | ✅ 基座（Phase 3） |
+| forge-mobile | 移动端占位（独立 uni-app 工程，不共 workspace——理由见其 README） | 📦 占位 |
 | forge-template | 新业务模块脚手架 | 📦 Phase 5 |
 
 文档：`docs/architecture`（依赖规则）· `docs/development`（上手）· `docs/database`（Flyway）· `docs/standards`（错误码/编码规范）
@@ -56,3 +76,4 @@ SPRING_PROFILES_ACTIVE=demo ./mvnw -pl forge-distributions/forge-demo-app -am sp
 ## 技术栈
 
 JDK 25 · Spring Boot 4.1.x · Spring Modulith 2.1.x · PostgreSQL 18 + Flyway · Redis 8 · Spring Security（token 认证）· Maven（wrapper）· 无 Lombok
+前端（forge-web）：Node 22/pnpm 10 · Vue 3.5 + TS + Vite 8 · element-plus · pinia 3 · vitest/eslint(flat)/prettier

@@ -14,3 +14,27 @@ verify:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == "main"
+
+# 前端全量（forge-web：lint/build/test）——与 verify 并列，全量简版触发（spec 2026-11-18 §6）
+web:
+  stage: verify
+  image: node:22-alpine
+  variables:
+    # corepack 走 npm 源较慢且 CI 内无需交互确认；pnpm 版本以 packageManager 字段为源
+    COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@10 --activate
+  cache:
+    key: forge-pnpm
+    paths: [.pnpm-store]
+  script:
+    - cd forge-web
+    - pnpm config set store-dir .pnpm-store
+    - pnpm install --frozen-lockfile
+    - pnpm -r lint
+    - pnpm -r build
+    - pnpm -r test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
