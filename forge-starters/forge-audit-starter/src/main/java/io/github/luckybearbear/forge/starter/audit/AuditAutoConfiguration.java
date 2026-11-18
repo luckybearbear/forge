@@ -13,6 +13,7 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -52,14 +53,25 @@ import org.springframework.transaction.PlatformTransactionManager;
 @EnableConfigurationProperties(ForgeAuditProperties.class)
 public class AuditAutoConfiguration {
 
-    /** 异步发布器（forge.audit.async=true 缺省装配；逃生口 false 时不存在，filter 走同步构造）。 */
-    @Bean
-    @ConditionalOnProperty(prefix = "forge.audit", name = "async",
+    /**
+     * 异步发布器装配（review Minor #3 收口）：需 forge.audit.async=true（缺省，逃生口 false
+     * 不装配）且 forge.web.access-log.enabled=true（与 filter 同门——发布器唯一生产者是
+     * filter，其关闭时不留空转消费线程）。@ConditionalOnProperty 不可重复标注，两条件经
+     * 嵌套配置类组合。
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "forge.web.access-log", name = "enabled",
             havingValue = "true", matchIfMissing = true)
-    public AsyncAccessLogPublisher asyncAccessLogPublisher(ApplicationEventPublisher eventPublisher,
-            PlatformTransactionManager transactionManager, ForgeAuditProperties properties) {
-        return new AsyncAccessLogPublisher(eventPublisher, transactionManager,
-                properties.queueCapacity());
+    static class AsyncAccessLogPublisherConfiguration {
+
+        @Bean
+        @ConditionalOnProperty(prefix = "forge.audit", name = "async",
+                havingValue = "true", matchIfMissing = true)
+        public AsyncAccessLogPublisher asyncAccessLogPublisher(ApplicationEventPublisher eventPublisher,
+                PlatformTransactionManager transactionManager, ForgeAuditProperties properties) {
+            return new AsyncAccessLogPublisher(eventPublisher, transactionManager,
+                    properties.queueCapacity());
+        }
     }
 
     @Bean

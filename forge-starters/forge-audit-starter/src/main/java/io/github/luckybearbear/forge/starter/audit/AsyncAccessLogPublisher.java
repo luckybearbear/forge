@@ -27,11 +27,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  * log.warn 节流（首条+每 1000 条）。
  *
  * <p><b>停机窗口</b>：@PreDestroy 停止接收→shutdown→awaitTermination(3s)（在途事件在
- * grace 窗口内完成提交），队内余量计数丢弃并告警——停机可能丢尾部若干条访问日志（语义
- * 取舍，README）。停机后 publish 不抛（计 dropped）。
+ * grace 窗口内完成提交，超时 shutdownNow 后再收敛 1s——@PreDestroy 最坏 ~4s），队内余量
+ * 计数丢弃并告警——停机可能丢尾部若干条访问日志（语义取舍，README）。停机后 publish
+ * 不抛（计 dropped）。
  *
- * <p><b>单事件失败不杀循环</b>：消费侧异常 warn 后继续（发布器存活优先）；错误侧
- * （ErrorLogRecorded）发布点在 GlobalExceptionHandler 保持请求线程同步——低频路径，
+ * <p><b>单事件任何失败不杀循环</b>：消费侧捕 Throwable（Error——OOM/LinkageError 等——
+ * 穿透 Exception 捕获会静默击杀循环，review Important #1）warn 后继续（发布器存活优先）；
+ * 错误侧（ErrorLogRecorded）发布点在 GlobalExceptionHandler 保持请求线程同步——低频路径，
  * 不值得异步基建（取舍见其 javadoc）。
  */
 public class AsyncAccessLogPublisher {
@@ -40,6 +42,9 @@ public class AsyncAccessLogPublisher {
 
     /** 停机 grace：在途事件事务提交窗口（超时则 shutdownNow 收割）。 */
     static final long SHUTDOWN_GRACE_SECONDS = 3;
+
+    /** shutdownNow 后的收割收敛窗口——@PreDestroy 最坏 3s+1s≈4s（与文档口径对齐）。 */
+    private static final long SHUTDOWN_NOW_GRACE_SECONDS = 1;
 
     /** 消费循环 poll 超时：停机标志至多此后一拍生效。 */
     private static final long POLL_TIMEOUT_MS = 500;
@@ -118,13 +123,15 @@ public class AsyncAccessLogPublisher {
         try {
             publishTransaction.executeWithoutResult(status -> eventPublisher.publishEvent(event));
             processed.incrementAndGet();
-        } catch (Exception ex) {
-            // 审计不反噬 + 循环存活：单事件登记失败 warn 后继续消费下一事件
+        } catch (Throwable ex) {
+            // 审计不反噬 + 循环存活：捕 Throwable 而非 Exception——Error（OOM/LinkageError 等）
+            // 穿透会静默击杀消费循环（running 仍 true，队列随即堆满持续丢弃直到重启，
+            // review Important #1）；发布器存活优先，单事件失败 warn 后继续
             log.warn("access log event publish failed: {}", ex.getMessage(), ex);
         }
     }
 
-    /** 优雅停机（@PreDestroy）：停止接收→在途事件 grace(3s) 内完成→余量计数丢弃。 */
+    /** 优雅停机（@PreDestroy）：停止接收→在途事件 grace(3s) 内完成→超时收割再收敛 1s→余量计数丢弃。 */
     @PreDestroy
     public void shutdown() {
         if (!running.compareAndSet(true, false)) {
@@ -134,7 +141,8 @@ public class AsyncAccessLogPublisher {
         try {
             if (!executor.awaitTermination(SHUTDOWN_GRACE_SECONDS, TimeUnit.SECONDS)) {
                 executor.shutdownNow();
-                executor.awaitTermination(SHUTDOWN_GRACE_SECONDS, TimeUnit.SECONDS);
+                // 收割后短窗收敛（非再等满 3s——@PreDestroy 最坏 ~4s，review Minor #4）
+                executor.awaitTermination(SHUTDOWN_NOW_GRACE_SECONDS, TimeUnit.SECONDS);
             }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();

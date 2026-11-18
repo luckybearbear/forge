@@ -165,4 +165,30 @@ class AsyncAccessLogPublisherTest {
         assertThat(txManager.trace).containsExactly("begin", "rollback", "begin", "/good", "commit");
         async.shutdown();
     }
+
+    /**
+     * 消费中 Error（review Important #1）：publishEvent 抛 OutOfMemoryError——只捕 Exception 时
+     * Error 穿透静默击杀消费循环（running 仍 true、队列堆满持续丢弃直到重启）；加固后循环存活，
+     * 后续事件照常经事务发布。
+     */
+    @Test
+    void errorInConsumeDoesNotKillLoop() {
+        RecordingTxManager txManager = new RecordingTxManager();
+        ApplicationEventPublisher erroring = event -> {
+            if (((AccessLogRecorded) event).path().equals("/oom")) {
+                throw new OutOfMemoryError("simulated oom"); // Error：穿透 Exception 捕获的回归载体
+            }
+            txManager.trace.add(((AccessLogRecorded) event).path());
+        };
+        AsyncAccessLogPublisher async = new AsyncAccessLogPublisher(erroring, txManager, 8);
+
+        assertThatCode(() -> async.publish(event("/oom"))).doesNotThrowAnyException();
+        async.publish(event("/after-oom"));
+
+        Awaitility.await().atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> assertThat(async.processedCount())
+                        .isEqualTo(1)); // 循环未被 Error 击杀：后续事件照常处理
+        assertThat(txManager.trace).containsExactly("begin", "rollback", "begin", "/after-oom", "commit");
+        async.shutdown();
+    }
 }
