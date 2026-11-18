@@ -1,7 +1,8 @@
 # forge-security-starter
 
 安全层 starter：引入即得无状态认证（Bearer token）+ 租户上下文填充 + `@TenantIgnore` 平台视角 AOP +
-**方法安全（@EnableMethodSecurity）** + 401/403 统一 `Result` 输出 + **改密会话失效监听**。
+**方法安全（@EnableMethodSecurity）** + 401/403 统一 `Result` 输出 + **改密会话失效监听** +
+**停用租户即时全下线监听**。
 token 存储默认 Redis（随件携带 data-redis 栈），无 Redis 时自动降级内存实现（启动 warn）。
 
 ## 自动装配（`ForgeSecurityAutoConfiguration` + `ForgeTokenStoreFallbackAutoConfiguration`）
@@ -23,6 +24,10 @@ token 存储默认 Redis（随件携带 data-redis 栈），无 Redis 时自动�
   `UserPasswordChanged` → `TokenStore.revokeByUserId`（同步——改密返回时旧 token 已失效）。
   吊销按 userId 全域，无租户语义（不 set 租户）；发布方事务回滚时吊销已生效（安全方向偏差，
   用户重登即可，无危害）
+- **`TenantDisabledListener`（Phase 3 前置 Task 1）**：消费 tenant 契约事件
+  `TenantDisabled` → `TokenStore.revokeByTenantId`（同步——停用返回时该租户存量 token 已全下线）。
+  吊销按 tenantId 全域，无租户语义（不 set 租户）；tenantId=null 的 admin token 不入租户索引、
+  不受影响；发布方事务回滚时吊销已生效（安全方向偏差，重新启用后重登即可，无危害）
 
 ## 属性
 
@@ -40,6 +45,11 @@ token 存储默认 Redis（随件携带 data-redis 栈），无 Redis 时自动�
 - **user 索引（Task 4 安全输入 2）**：`auth:user-tokens:{userId}` = SADD token + 键级 TTL
   （= token TTL，多 token 取较长者）；`revokeByUserId` 遍历索引删 token 键 + 清索引
   （只影响目标用户，幂等）。`InMemoryTokenStore` 同语义（反向 Map）。
+- **tenant 索引（Phase 3 前置 Task 1，双索引）**：`auth:tenant-tokens:{tenantId}` = SADD token +
+  键级 TTL；tenantId=null 的 admin token **不入本索引**（平台管理员跨租户，不受租户吊销影响）；
+  `refresh` 续期同步续两索引；`revokeByTenantId` 遍历索引删 token 键 + 清索引（只影响目标租户，
+  幂等）。`revoke(token)`/`revokeByUserId` 不清 tenant 索引成员（成本）——残留随
+  `revokeByTenantId` 遍历幂等 DEL 回收，语义同 user 索引惰性残留。`InMemoryTokenStore` 同语义（反向 Map）。
 
 
 ## Boot 4 注意事项（实证）
@@ -66,3 +76,8 @@ revoke 后 401 / `@TenantIgnore` 平台视角——全绿（RED 复现：imports
 索引落盘/清理 + 幂等；`UserPasswordChanged` 事件 → 旧 token 即时不可 resolve（RED：监听器未注册时
 事件发布后 token 仍可 resolve）；identity 侧联测见
 `forge-service-identity` 的 `changePasswordRevokesExistingTokensImmediately`（登录两 token → 改密 → 双双失效，新密码可登）。
+
+`TenantDisabledRevocationIntegrationTest`（Phase 3 前置 Task 1，同容器）：两租户各两 token +
+admin token（tenantId=null）→ `revokeByTenantId`/`TenantDisabled` 事件 → 目标租户全部 resolve 空、
+邻居租户与 admin token 不受影响；tenant 索引落盘（SADD + TTL）/清理 + 幂等；`refresh` 同步续
+tenant 索引 TTL。

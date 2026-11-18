@@ -30,14 +30,20 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li><b>user 索引（Task 4 安全输入 2）</b>：create 时 SADD {@code auth:user-tokens:{userId}} +
  *       键级 TTL（= token TTL）；refresh 续期时同步续索引 TTL（索引恒 ≥ 其内最长 token 生命周期）；
  *       {@code revokeByUserId} 遍历索引删除 token 键并清索引——改密吊销既有会话的承接点</li>
+ *   <li><b>tenant 索引（Phase 3 前置 Task 1）</b>：create 时 SADD {@code auth:tenant-tokens:{tenantId}} +
+ *       键级 TTL（tenantId null 的 admin token 不入本索引）；refresh 续期同步续两索引；
+ *       {@code revokeByTenantId} 遍历索引删除 token 键并清索引——停用租户存量 token 即时全下线的
+ *       承接点。{@code revoke(token)}/{@code revokeByUserId} 不清 tenant 索引成员（成本）——
+ *       残留成员随 {@code revokeByTenantId} 遍历幂等 DEL 回收，语义同 user 索引的惰性残留</li>
  * </ul>
  *
- * 语义对齐 TokenStore 五方法；生产实现，无 Redis 类路径时由自动配置降级 InMemoryTokenStore。
+ * 语义对齐 TokenStore 六方法；生产实现，无 Redis 类路径时由自动配置降级 InMemoryTokenStore。
  */
 public class RedisTokenStore implements TokenStore {
 
     static final String KEY_PREFIX = "auth:token:";
     static final String USER_INDEX_PREFIX = "auth:user-tokens:";
+    static final String TENANT_INDEX_PREFIX = "auth:tenant-tokens:";
 
     /**
      * 条件重写（单键原子）：键存在 → 以 ARGV[1]（新 JSON）+ PX ARGV[2]（毫秒 TTL）重设并返回 1；
@@ -62,7 +68,10 @@ public class RedisTokenStore implements TokenStore {
         String token = idGenerator.nextId();
         StoredToken stored = new StoredToken(token, grant, Instant.now().plus(ttl));
         redis.opsForValue().set(key(token), mapper.writeValueAsString(stored), ttl);
-        indexToken(grant.userId(), token, ttl);
+        indexToken(userIndexKey(grant.userId()), token, ttl);
+        if (grant.tenantId() != null) { // admin token（tenantId=null）不入租户索引——不受租户吊销影响
+            indexToken(tenantIndexKey(grant.tenantId()), token, ttl);
+        }
         return stored;
     }
 
@@ -94,12 +103,16 @@ public class RedisTokenStore implements TokenStore {
         if (!Boolean.TRUE.equals(refreshed)) {
             return; // 读值与条件重写窗口内键消失（过期/吊销竞态）：不复活，静默放弃
         }
-        indexToken(stored.grant().userId(), token, ttl); // 续期后索引 TTL 同步延长（索引 ≥ 最长 token 生命周期）
+        indexToken(userIndexKey(stored.grant().userId()), token, ttl); // 续期后索引 TTL 同步延长（索引 ≥ 最长 token 生命周期）
+        if (stored.grant().tenantId() != null) {
+            indexToken(tenantIndexKey(stored.grant().tenantId()), token, ttl); // 双索引同步续期
+        }
     }
 
     /**
      * 按用户吊销全部 token（幂等）：遍历索引删除 token 键 + 清索引键。无租户语义——token 键空间
-     * 全局唯一，按 userId 全域吊销（改密等会话失效事件由 security-starter 监听器调用）。
+     * 全局唯一，按 userId 全域吊销（改密等会话失效事件由 security-starter 监听器调用）。不清
+     * tenant 索引成员（成本）——残留成员随 revokeByTenantId 遍历幂等 DEL 回收。
      */
     @Override
     public void revokeByUserId(String userId) {
@@ -111,16 +124,34 @@ public class RedisTokenStore implements TokenStore {
         redis.delete(indexKey);
     }
 
-    /** 登记用户索引：SADD + 键级 TTL（EXPIRE 覆写为本次写值——统一 TTL 策略下新写者剩余寿命最长，
-     * 索引恒 ≥ 其内最长 token；异 TTL 策略属后续演进注记）。 */
-    private void indexToken(String userId, String token, Duration ttl) {
-        String indexKey = userIndexKey(userId);
+    /**
+     * 按租户吊销全部 token（幂等）：遍历索引删除 token 键 + 清索引键——停用租户存量 token 即时
+     * 全下线的承接点（TenantDisabled 事件由 security-starter 监听器调用）。无租户语义——按
+     * tenantId 全域（不依赖/不设置租户上下文）；tenantId null 的 admin token 不入本索引、不受影响。
+     */
+    @Override
+    public void revokeByTenantId(String tenantId) {
+        String indexKey = tenantIndexKey(tenantId);
+        Set<String> tokens = redis.opsForSet().members(indexKey);
+        if (tokens != null) {
+            tokens.forEach(token -> redis.delete(key(token)));
+        }
+        redis.delete(indexKey);
+    }
+
+    /** 登记索引（user/tenant 同构）：SADD + 键级 TTL（EXPIRE 覆写为本次写值——统一 TTL 策略下
+     * 新写者剩余寿命最长，索引恒 ≥ 其内最长 token；异 TTL 策略属后续演进注记）。 */
+    private void indexToken(String indexKey, String token, Duration ttl) {
         redis.opsForSet().add(indexKey, token);
         redis.expire(indexKey, ttl);
     }
 
     private static String userIndexKey(String userId) {
         return USER_INDEX_PREFIX + userId;
+    }
+
+    private static String tenantIndexKey(String tenantId) {
+        return TENANT_INDEX_PREFIX + tenantId;
     }
 
     private static String key(String token) {

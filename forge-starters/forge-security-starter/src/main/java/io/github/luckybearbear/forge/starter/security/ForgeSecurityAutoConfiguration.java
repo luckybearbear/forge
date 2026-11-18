@@ -38,6 +38,8 @@ import org.springframework.security.web.access.ExceptionTranslationFilter;
  *       重复声明幂等，此前挂在 IdentityServiceAutoConfiguration（Phase 2b Task 3）已移除</li>
  *   <li><b>UserPasswordChangedListener（Task 4 安全输入 2）</b>：消费 identity 契约事件，
  *       {@code TokenStore.revokeByUserId} 吊销改密用户全部 token</li>
+ *   <li><b>TenantDisabledListener（Phase 3 前置 Task 1）</b>：消费 tenant 契约事件，
+ *       {@code TokenStore.revokeByTenantId} 吊销停用租户全部存量 token（即时全下线）</li>
  * </ul>
  *
  * <p>两处排序实证（Task 10 集成测试 + 条件评估报告）：
@@ -134,6 +136,16 @@ public class ForgeSecurityAutoConfiguration {
     @ConditionalOnMissingBean
     UserPasswordChangedListener forgeUserPasswordChangedListener(TokenStore tokenStore) {
         return new UserPasswordChangedListener(tokenStore);
+    }
+
+    /**
+     * 租户停用会话失效监听（Phase 3 前置 Task 1）：TenantDisabled → revokeByTenantId（同步，
+     * 停用返回时该租户存量 token 已全部失效）。@ConditionalOnMissingBean 让位自定义吊销策略。
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    TenantDisabledListener forgeTenantDisabledListener(TokenStore tokenStore) {
+        return new TenantDisabledListener(tokenStore);
     }
 
     @Configuration(proxyBeanMethods = false)

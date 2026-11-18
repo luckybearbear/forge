@@ -46,14 +46,15 @@ forge-audit-starter 都带）→ Boot 的 `JpaRepositoriesAutoConfiguration` 按
 | 契约事件 | 发布方 | 消费方 |
 |---|---|---|
 | `TenantCreated` | service-tenant `TenantService`（创建） | service-authorization `TenantCreatedListener`（异步初始化租户 ADMIN 角色与默认权限） |
-| `TenantDisabled` | service-tenant `TenantService`（停用） | 暂无（预留：Phase 3 会话失效/通知） |
+| `TenantDisabled` | service-tenant `TenantService`（停用） | forge-security-starter `TenantDisabledListener`（**同步** @EventListener → `TokenStore.revokeByTenantId`，停用返回时该租户存量 token 已全下线；admin token 无租户不受影响） |
 | `UserCreated` | service-identity `UserService`（创建） | 暂无（预留：通知类扩展） |
 | `UserPasswordChanged` | service-identity `UserService`（改密） | forge-security-starter `UserPasswordChangedListener`（**同步** @EventListener → `TokenStore.revokeByUserId`，改密返回时旧 token 已全失效） |
 | `OrgUnitChanged` | service-organization `OrgUnitService`（增/改/删） | 暂无（预留） |
 | `RolePermissionsChanged` | service-authorization `RoleService`（assignPermissions） | 暂无域外消费（域内权限快照缓存由写路径显式 evict；事件入 event_publication 登记表） |
 
-发布均在业务事务内（`event_publication` 持久化登记 + 提交后异步投递）；唯一例外是
-`UserPasswordChanged`（同步吊销，安全优先于事务边界——发布方事务若回滚吊销仍生效，安全方向无害）。
+发布均在业务事务内（`event_publication` 持久化登记 + 提交后异步投递）；例外是
+`UserPasswordChanged` 与 `TenantDisabled`（同步吊销，安全优先于事务边界——发布方事务若回滚吊销仍生效，
+安全方向无害）。
 平台侧另有审计事件（`AccessLogRecorded`/`ErrorLogRecorded`，非跨服务契约——发布方为
 audit-starter 的 `ApiAccessLogFilter` 与 web-starter 的 `GlobalExceptionHandler`，消费方为
 platform-audit 监听器异步落库）；Demo 的 `MoldRepairRequested` 沿用为 2a 契约事件示例。

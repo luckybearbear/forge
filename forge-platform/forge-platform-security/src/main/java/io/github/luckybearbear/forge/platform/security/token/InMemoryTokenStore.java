@@ -15,6 +15,8 @@ public class InMemoryTokenStore implements TokenStore {
     private final Map<String, StoredToken> store = new ConcurrentHashMap<>();
     /** userId → token 反向索引（revokeByUserId 承接点；revoke(token) 惰性残留，随整组吊销回收）。 */
     private final Map<String, Set<String>> tokensByUser = new ConcurrentHashMap<>();
+    /** tenantId → token 反向索引（revokeByTenantId 承接点）；tenantId null 的 admin token 不入本索引。 */
+    private final Map<String, Set<String>> tokensByTenant = new ConcurrentHashMap<>();
     private final IdGenerator idGenerator = new UuidV7Generator();
 
     @Override
@@ -23,6 +25,9 @@ public class InMemoryTokenStore implements TokenStore {
         StoredToken stored = new StoredToken(token, grant, Instant.now().plus(ttl));
         store.put(token, stored);
         tokensByUser.computeIfAbsent(grant.userId(), key -> ConcurrentHashMap.newKeySet()).add(token);
+        if (grant.tenantId() != null) {
+            tokensByTenant.computeIfAbsent(grant.tenantId(), key -> ConcurrentHashMap.newKeySet()).add(token);
+        }
         return stored;
     }
 
@@ -33,7 +38,7 @@ public class InMemoryTokenStore implements TokenStore {
 
     @Override
     public void revoke(String token) {
-        store.remove(token); // 索引残留无害：revokeByUserId 时统一回收（幂等 remove）
+        store.remove(token); // 索引残留无害：revokeByUserId/revokeByTenantId 时统一回收（幂等 remove）
     }
 
     @Override
@@ -45,7 +50,15 @@ public class InMemoryTokenStore implements TokenStore {
     public void revokeByUserId(String userId) {
         Set<String> tokens = tokensByUser.remove(userId);
         if (tokens != null) {
-            tokens.forEach(store::remove);
+            tokens.forEach(store::remove); // tenant 索引残留同 revoke(token) 语义：revokeByTenantId 幂等回收
+        }
+    }
+
+    @Override
+    public void revokeByTenantId(String tenantId) {
+        Set<String> tokens = tokensByTenant.remove(tenantId);
+        if (tokens != null) {
+            tokens.forEach(store::remove); // user 索引残留同 revoke(token) 语义：revokeByUserId 幂等回收
         }
     }
 }
