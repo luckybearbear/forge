@@ -2,10 +2,12 @@ package io.github.luckybearbear.forge.starter.audit;
 
 import io.github.luckybearbear.forge.platform.web.FilterOrder;
 import io.github.luckybearbear.forge.starter.web.ForgeWebAccessLogProperties;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationEventPublisher;
@@ -33,7 +35,9 @@ import org.springframework.transaction.PlatformTransactionManager;
  * </ul>
  *
  * <p><b>开关</b>：复用 {@code forge.web.access-log.enabled}（缺省 true）——与 body 缓存过滤器
- * 同门：关缓存即关访问日志（无缓存体则摘要恒空，成对开关语义一致、避免半开状态）。
+ * 同门：关缓存即关访问日志（无缓存体则摘要恒空，成对开关语义一致、避免半开状态）；
+ * {@code forge.audit.async}（缺省 true，P3 Task 2）选发布通道——false 时本类的异步发布器
+ * 不装配，filter 回退请求线程同步发布（逃生口）。
  *
  * <p><b>组合型 starter</b>（Task 7 裁定，修正 starter 互不依赖约定）：审计 = web 过滤器 +
  * 事件登记 + JPA 落库的横切组合，依赖 forge-spring-boot-starter（web 栈与属性）与
@@ -45,18 +49,32 @@ import org.springframework.transaction.PlatformTransactionManager;
 @ComponentScan(basePackages = "io.github.luckybearbear.forge.platform.audit.listener")
 @EntityScan(basePackages = "io.github.luckybearbear.forge.platform.audit.domain")
 @EnableJpaRepositories(basePackages = "io.github.luckybearbear.forge.platform.audit.domain")
+@EnableConfigurationProperties(ForgeAuditProperties.class)
 public class AuditAutoConfiguration {
+
+    /** 异步发布器（forge.audit.async=true 缺省装配；逃生口 false 时不存在，filter 走同步构造）。 */
+    @Bean
+    @ConditionalOnProperty(prefix = "forge.audit", name = "async",
+            havingValue = "true", matchIfMissing = true)
+    public AsyncAccessLogPublisher asyncAccessLogPublisher(ApplicationEventPublisher eventPublisher,
+            PlatformTransactionManager transactionManager, ForgeAuditProperties properties) {
+        return new AsyncAccessLogPublisher(eventPublisher, transactionManager,
+                properties.queueCapacity());
+    }
 
     @Bean
     @ConditionalOnMissingBean(ApiAccessLogFilter.class)
     @ConditionalOnProperty(prefix = "forge.web.access-log", name = "enabled",
             havingValue = "true", matchIfMissing = true)
     public FilterRegistrationBean<ApiAccessLogFilter> apiAccessLogFilterRegistration(
+            ObjectProvider<AsyncAccessLogPublisher> asyncPublisher,
             ApplicationEventPublisher eventPublisher, PlatformTransactionManager transactionManager,
             ForgeWebAccessLogProperties properties) {
-        FilterRegistrationBean<ApiAccessLogFilter> registration = new FilterRegistrationBean<>(
-                new ApiAccessLogFilter(eventPublisher, transactionManager,
-                        properties.maxBodySize().toBytes()));
+        ApiAccessLogFilter filter = asyncPublisher.getIfAvailable() != null
+                ? new ApiAccessLogFilter(asyncPublisher.getObject(), properties.maxBodySize().toBytes())
+                : new ApiAccessLogFilter(eventPublisher, transactionManager,
+                        properties.maxBodySize().toBytes());
+        FilterRegistrationBean<ApiAccessLogFilter> registration = new FilterRegistrationBean<>(filter);
         registration.setOrder(FilterOrder.ACCESS_LOG_FILTER);
         return registration;
     }

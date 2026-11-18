@@ -6,6 +6,7 @@ import io.github.luckybearbear.forge.platform.security.CurrentUser;
 import io.github.luckybearbear.forge.platform.security.TenantContextHolder;
 import io.github.luckybearbear.forge.platform.security.ThreadLocalUserProvider;
 import io.github.luckybearbear.forge.platform.test.AbstractIntegrationTest;
+import io.github.luckybearbear.forge.starter.audit.AsyncAccessLogPublisher;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -106,6 +107,10 @@ class AuditStarterIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     JdbcTemplate jdbcTemplate;
 
+    // 缺省 async=true：发布器在场（异步判别——processed 计数>0 即事件经异步通道发布）
+    @Autowired
+    AsyncAccessLogPublisher asyncPublisher;
+
     // Boot 4 无 TestRestTemplate：直连 RestTemplate + 直通错误处理器（demo 范式），4xx/5xx 体可断言
     RestTemplate rest = noThrowRestTemplate();
 
@@ -149,9 +154,14 @@ class AuditStarterIntegrationTest extends AbstractIntegrationTest {
                 Integer.class, eventType.getName());
     }
 
-    /** 带体 POST：method/path/resultCode/duration/租户/用户/body 摘要齐落一行 + 登记表 COMPLETED。 */
+    /**
+     * 带体 POST：method/path/resultCode/duration/租户/用户/body 摘要齐落一行 + 登记表 COMPLETED；
+     * 异步判别——发布器 processed 计数>0（事件经 AsyncAccessLogPublisher 通道发布，非请求线程
+     * 同步路径；P3 Task 2 起缺省 forge.audit.async=true）。
+     */
     @Test
     void accessRequestFlowsIntoCompletedAccessLogRow() {
+        long processedBefore = asyncPublisher.processedCount();
         ResponseEntity<String> response = exchange(HttpMethod.POST, "/app-api/audit/echo",
                 "t-audit-1", "u-audit-1", "{\"name\":\"hello-audit\"}");
         assertThat(response.getStatusCode().value()).isEqualTo(200);
@@ -172,6 +182,9 @@ class AuditStarterIntegrationTest extends AbstractIntegrationTest {
             assertThat(row.get("created_at")).isNotNull();
             assertThat(row.get("deleted")).isEqualTo(false);
         });
+        // 异步判别（append-only 表跨用例累计，按用例前后增量断言）
+        assertThat(asyncPublisher.processedCount()).isGreaterThan(processedBefore);
+        assertThat(asyncPublisher.droppedCount()).isZero();
 
         // 事件经 registry 异步完成（先登记后投递，spec §10）
         Awaitility.await().atMost(AWAIT).untilAsserted(() ->

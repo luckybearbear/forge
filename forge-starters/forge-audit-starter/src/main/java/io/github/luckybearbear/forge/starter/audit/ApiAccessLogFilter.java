@@ -31,10 +31,13 @@ import org.springframework.web.util.WebUtils;
  * 安全链（-100）——入口时租户/用户上下文已就绪；出口在 finally 段读取（外层
  * TokenAuthFilter 的 finally 清理尚未回退执行，上下文仍有效），链异常/正常响应统一落账。
  *
- * <p><b>发布事务</b>：filter 出口无自然事务，而 @ApplicationModuleListener 为 AFTER_COMMIT
- * 投递（无事务发布直接丢弃，service-authorization 集成测试实证）——publishEvent 以
+ * <p><b>发布事务/异步</b>：filter 出口无自然事务，而 @ApplicationModuleListener 为 AFTER_COMMIT
+ * 投递（无事务发布直接丢弃，service-authorization 集成测试实证）——publishEvent 须经
  * TransactionTemplate 包裹（REQUIRED 空事务）：event_publication 登记随其原子提交，
- * 提交后异步投递。
+ * 提交后异步投递。P3 Task 2 起<b>缺省异步</b>（forge.audit.async=true）：finally 段仅
+ * {@link AsyncAccessLogPublisher#publish} 入队（请求线程去每请求事务税），消费循环在虚拟
+ * 线程上同样以 TransactionTemplate 自开事务——请求线程出口本无事务，事务由发布方自开，
+ * 挪线程不改变语义；async=false 为逃生口（请求线程同步发布，旧路径）。
  *
      * <p><b>body 摘要</b>：仅当请求链上可寻得 {@link ContentCachingRequestWrapper}（web-starter 的
      * CacheRequestBodyFilter 装配；经 {@code WebUtils.getNativeRequest} 沿 wrapper 链取——安全链的
@@ -51,12 +54,27 @@ public class ApiAccessLogFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(ApiAccessLogFilter.class);
 
+    /** 异步发布器（async=true 时非空；为空即同步逃生口路径）。 */
+    private final AsyncAccessLogPublisher asyncPublisher;
+
+    /** 同步路径组件（async=false 逃生口时非空；为空即异步路径）。 */
     private final ApplicationEventPublisher eventPublisher;
     private final TransactionTemplate publishTransaction;
+
     private final long maxBodySize;
 
+    /** 异步路径构造（缺省，forge.audit.async=true）：finally 仅入队，事务在消费线程自开。 */
+    public ApiAccessLogFilter(AsyncAccessLogPublisher asyncPublisher, long maxBodySize) {
+        this.asyncPublisher = asyncPublisher;
+        this.eventPublisher = null;
+        this.publishTransaction = null;
+        this.maxBodySize = maxBodySize;
+    }
+
+    /** 同步路径构造（逃生口，forge.audit.async=false）：请求线程 TransactionTemplate 包裹发布。 */
     public ApiAccessLogFilter(ApplicationEventPublisher eventPublisher,
             PlatformTransactionManager transactionManager, long maxBodySize) {
+        this.asyncPublisher = null;
         this.eventPublisher = eventPublisher;
         this.publishTransaction = new TransactionTemplate(transactionManager);
         this.maxBodySize = maxBodySize;
@@ -84,7 +102,11 @@ public class ApiAccessLogFilter extends OncePerRequestFilter {
                     new ThreadLocalUserProvider().currentUser().map(CurrentUser::userId).orElse(null),
                     request.getMethod(), request.getRequestURI(), response.getStatus(),
                     durationMs, bodyDigest(request), occurredAt);
-            publishTransaction.executeWithoutResult(status -> eventPublisher.publishEvent(event));
+            if (asyncPublisher != null) {
+                asyncPublisher.publish(event); // 入队即返（满/停机丢弃计数，不抛不阻塞）
+            } else {
+                publishTransaction.executeWithoutResult(status -> eventPublisher.publishEvent(event));
+            }
         } catch (Exception ex) {
             log.warn("access log publish skipped: {}", ex.getMessage(), ex);
         }

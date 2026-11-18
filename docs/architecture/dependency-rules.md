@@ -57,7 +57,10 @@ forge-audit-starter 都带）→ Boot 的 `JpaRepositoriesAutoConfiguration` 按
 安全方向无害）。
 平台侧另有审计事件（`AccessLogRecorded`/`ErrorLogRecorded`，非跨服务契约——发布方为
 audit-starter 的 `ApiAccessLogFilter` 与 web-starter 的 `GlobalExceptionHandler`，消费方为
-platform-audit 监听器异步落库）；Demo 的 `MoldRepairRequested` 沿用为 2a 契约事件示例。
+platform-audit 监听器异步落库）；P3 Task 2 起 filter 侧发布缺省经 `AsyncAccessLogPublisher`
+异步化（有界队列+虚拟线程消费循环内 TransactionTemplate 自开事务——发布方自开事务，
+挪出请求线程不改变 AFTER_COMMIT 语义；`forge.audit.async=false` 逃生口回退同步），错误侧
+保持请求线程同步（低频）。Demo 的 `MoldRepairRequested` 沿用为 2a 契约事件示例。
 
 ### Filter 时序约束（FilterOrder 全局段）
 
