@@ -1,0 +1,28 @@
+{
+  "name": "forge-web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Forge web 前端（pnpm workspace：apps/admin + packages/shared）——Java 仓同仓不同 workspace（spec 2026-11-18 §4）",
+  "engines": {
+    "node": ">=20.19",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "pnpm -r dev",
+    "build": "pnpm -r build",
+    "lint": "prettier --check --cache .",
+    "format": "prettier --write --cache .",
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "eslint-plugin-vue": "^10.12.1",
+    "globals": "^17.14.0",
+    "prettier": "^3.10.1",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.73.0",
+    "vue-eslint-parser": "^10.4.2"
+  }
+}

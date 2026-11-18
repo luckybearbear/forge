@@ -26,3 +26,9 @@ Thumbs.db
 
 # flatten-maven-plugin output
 .flattened-pom.xml
+
+# Node（forge-web/forge-mobile 系）
+node_modules/
+dist/
+*.local
+.pnpm-store/
