@@ -164,11 +164,13 @@ class AuthorizationServiceIntegrationTest extends AbstractIntegrationTest {
                 .contains("user:manage", "role:manage", "org:manage",
                         "mold:create", "mold:read", "mold:repair", "maint:read");
 
-        PermissionDTO created = permissionService.create("report:export", "报表导出", PermissionType.API);
+        PermissionDTO created = permissionService.create("report:export", "报表导出", PermissionType.API,
+                null, null, null, null, null, null);
         assertThat(permissionService.findById(created.id()).name()).isEqualTo("报表导出");
 
         // 重复编码：AUTH-0409 复用 + 权限点文案覆写（FOREIGN_CODES 不加新码）
-        assertThatThrownBy(() -> permissionService.create("report:export", "重复", PermissionType.API))
+        assertThatThrownBy(() -> permissionService.create("report:export", "重复", PermissionType.API,
+                null, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> {
                     assertThat(((BusinessException) ex).errorCode().code()).isEqualTo("AUTH-0409");

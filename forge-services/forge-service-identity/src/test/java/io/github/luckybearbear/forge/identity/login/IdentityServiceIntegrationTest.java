@@ -13,6 +13,7 @@ import io.github.luckybearbear.forge.platform.security.TenantContextHolder;
 import io.github.luckybearbear.forge.platform.security.auth.ForgeAuthentication;
 import io.github.luckybearbear.forge.platform.security.password.PasswordHasher;
 import io.github.luckybearbear.forge.platform.security.token.StoredToken;
+import io.github.luckybearbear.forge.platform.security.token.TokenGrant;
 import io.github.luckybearbear.forge.platform.security.token.TokenStore;
 import io.github.luckybearbear.forge.platform.test.AbstractIntegrationTest;
 import io.github.luckybearbear.forge.platform.test.TenantTestSupport;
@@ -22,6 +23,7 @@ import io.github.luckybearbear.forge.service.identity.app.AppLoginRequest;
 import io.github.luckybearbear.forge.service.identity.app.AuthService;
 import io.github.luckybearbear.forge.service.identity.app.LoginResponse;
 import io.github.luckybearbear.forge.service.identity.app.UserService;
+import io.github.luckybearbear.forge.service.identity.controller.app.AuthAppController;
 import io.github.luckybearbear.forge.service.identity.domain.IdentityUserRepository;
 import io.github.luckybearbear.forge.starter.security.RedisTokenStore;
 import java.util.List;
@@ -140,6 +142,7 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired AuthService authService;
     @Autowired UserService userService;
+    @Autowired AuthAppController authAppController; // /menus 缺省态实证（本上下文无 MenuQueryService bean）
     @Autowired CountingPasswordHasher hasher;
     @Autowired UserQueryService userQueryService; // 契约 bean（模块根包 IdentityUserQueryServiceImpl）
     @Autowired IdentityUserRepository userRepository;
@@ -330,6 +333,28 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
         authService.logout(response.token()); // 控制器自 Authorization Bearer 提取 token 传入
 
         assertThat(tokenStore.resolve(response.token())).isEmpty();
+    }
+
+    /**
+     * /menus 契约缺省态（菜单切片 Task 1）：{@code MenuQueryService} 经 ObjectProvider 注入——
+     * 本上下文（identity 独立运行，未装配 service-authorization）无该 bean → 空菜单列表
+     * （照 UserPermissionsQuery 缺省空集先例；装配侧快照语义见 IdentityMenusEndpointTest）。
+     */
+    @Test
+    void menusDefaultsToEmptyListWhenMenuQueryServiceAbsent() {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(ForgeAuthentication.of(
+                new StoredToken("raw-menus-absent",
+                        new TokenGrant("u-menus-absent", null, AuthService.USER_TYPE_MEMBER,
+                                Set.of("dashboard")),
+                        java.time.Instant.now().plus(java.time.Duration.ofSeconds(60))),
+                "raw-menus-absent"));
+        SecurityContextHolder.setContext(context);
+        try {
+            assertThat(authAppController.menus().data()).isEmpty();
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 
     @Test

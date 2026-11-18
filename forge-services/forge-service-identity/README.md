@@ -79,7 +79,11 @@
 
 ## 接口（实际路径含 /app-api、/admin-api 前缀）
 
-- `POST /app-api/auth/login`（permit-all 默认项）、`POST /app-api/auth/logout`、`GET /app-api/auth/me`
+- `POST /app-api/auth/login`（permit-all 默认项）、`POST /app-api/auth/logout`、`GET /app-api/auth/me`、
+  **`GET /app-api/auth/menus`**（可见菜单树，菜单切片 Task 1：token 快照 authorities 直取
+  ForgeAuthentication → 契约 `MenuQueryService`（contract-authorization）过滤——**不经
+  UserPermissionsQuery 重查**，与权限门禁同一快照口径；契约经 ObjectProvider 注入，未装配
+  service-authorization 时缺省空菜单列表）
 - `POST /admin-api/auth/login`（permit-all 默认项）、`POST /admin-api/auth/logout`、
   `GET /admin-api/auth/me`、**`PUT /admin-api/auth/password`**（自助改密：需已认证 admin token——
   /admin-api/** 面 PLATFORM 门禁；旧密码错 IDENT-0401、新密码弱 IDENT-0400；成功吊销该管理员全部
@@ -103,7 +107,9 @@ IDENT-0400/成功发 UserPasswordChanged 且旧密码失败新密码可登录）
 对 admin 侧联测）、用户创建重复名 IDENT-0409/409
 + UserCreated 单发 + 跨租户可重名、弱初始密码 IDENT-0400、契约查询租户视角隔离
 （本租户命中/他租户空/平台视角空）。`IdentityServicePermissionsGrantTest`（1 用例）：UserPermissionsQuery
-装配后登录 grant 携带真实权限点。
+装配后登录 grant 携带真实权限点。`IdentityMenusEndpointTest`（2 用例，菜单切片 Task 1）：/menus
+token 快照语义（stub PLATFORM→全量、受限→过滤；在场 UserPermissionsQuery 干扰桩零调用证明直取
+token authorities）；缺省态（ObjectProvider 空列表→空菜单）在主测试类（其上下文无 MenuQueryService）。
 
 **测试包位于服务根包之外的独立分支**（`io.github...forge.identity.login|permissions`）+ 桩经 `@Bean`
 注册：自动配置以服务根包做 @ComponentScan，若测试类栖身该包（tenant 单测试类范式可行），第二个

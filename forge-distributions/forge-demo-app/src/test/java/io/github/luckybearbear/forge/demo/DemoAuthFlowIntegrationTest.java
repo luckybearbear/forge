@@ -34,14 +34,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * （访问/错误日志）首次同台组装，种子数据经服务 API 铺底（@ActiveProfiles("test") →
  * {@link DemoDataSeeder}）。
  *
- * <p><b>九场景</b>（brief 全列 + 最终评审 Important-1 补充）：① 无 token 401 FORGE-0401；
+ * <p><b>十场景</b>（brief 全列 + 最终评审 Important-1 补充 + 菜单切片 Task 1）：① 无 token 401 FORGE-0401；
  * ② mfg-admin 登录建模 200；③ 双租户管理员同端点互不可见（判别式隔离经真实认证链）；
  * ④ mold-viewer（仅 mold:read）POST → 403 FORGE-0403；⑤ 角色授权变更 → <b>新登录</b>即生效
  * （权限快照缓存被显式 evict，但旧 token 的 TokenGrant 快照冻结——见
  * {@link #permissionGrantTakesEffectOnReLoginOnly()}）；⑥ logout 后旧 token 401；⑦ 上述流量入
  * api_access_log、未预期异常入 api_error_log；⑧ Modulith 边界保持绿（ModulithBoundaryTest，
  * 本类不重复）；⑨ org 面类级 org:manage 门禁（mold-viewer 调 /app-api/org-units/tree 403，
- * mold-admin 200 对照——org 三控制器门禁的 HTTP 级实证）。
+ * mold-admin 200 对照——org 三控制器门禁的 HTTP 级实证）；⑩ ADMIN token /menus 全量菜单树
+ * （菜单切片 Task 1——seeder 的字典全量授权差集机制对新菜单码自动生效）。
  *
  * <p><b>场景 5 的快照语义（本测试组要演示的边界）</b>：权限在<b>登录时</b>进 TokenGrant
  * 快照——改角色授权后旧 token 不含新权限（继续 403）；重新登录经 UserPermissionsQuery 重新
@@ -208,6 +209,39 @@ class DemoAuthFlowIntegrationTest extends AbstractIntegrationTest {
                 throw new AssertionError("VIEWER baseline restore failed: " + restore.getBody());
             }
         }
+    }
+
+    // ---- 场景 10：ADMIN token /menus 全量菜单树（菜单切片 Task 1）----
+
+    /**
+     * ADMIN 角色经 TenantInitializationService 的<b>字典全量授权差集</b>机制自动含新菜单码
+     * （V202611190000 seed：dashboard/sys-dir/tenant:manage + role:manage 转 MENU）——admin token
+     * 的 /menus 应见全部 MENU 节点 + sys-dir 目录（祖先链补全），且 API 型权限点（authorities
+     * 虽含之）不进菜单树；路由元数据（path/component）随节点下发（前端动态路由的驱动数据）。
+     */
+    @Test
+    void menusForAdminIncludesAllMenuNodes() {
+        String token = login("t-mfg", "mfg-admin", "Admin@123");
+        ResponseEntity<String> response = rest.exchange(url("/app-api/auth/menus"), HttpMethod.GET,
+                bearer(token), String.class);
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat((String) JsonPath.read(response.getBody(), "$.code")).isEqualTo("OK");
+
+        // 全 MENU 可见（seed 三 MENU + role:manage 转 MENU）+ DIR 由后代可见性补全；API 码不进树
+        List<String> allCodes = JsonPath.read(response.getBody(), "$..code");
+        assertThat(allCodes).contains("dashboard", "sys-dir", "tenant:manage", "role:manage");
+        assertThat(allCodes).doesNotContain("mold:create", "user:manage", "org:manage");
+
+        // 树形与路由元数据：sys-dir 为根目录，children 按 sort 升序 [tenant:manage(110), role:manage(120)]
+        List<String> sysDirChildren = JsonPath.read(response.getBody(),
+                "$..[?(@.code=='sys-dir')].children[*].code");
+        assertThat(sysDirChildren).containsExactly("tenant:manage", "role:manage");
+        List<String> tenantPaths = JsonPath.read(response.getBody(),
+                "$..[?(@.code=='tenant:manage')].path");
+        assertThat(tenantPaths).containsExactly("/system/tenants");
+        List<String> tenantComponents = JsonPath.read(response.getBody(),
+                "$..[?(@.code=='tenant:manage')].component");
+        assertThat(tenantComponents).containsExactly("system/tenant/index");
     }
 
     // ---- 场景 6：logout 吊销当前 token → 旧 token 再用 401 ----

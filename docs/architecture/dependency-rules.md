@@ -84,6 +84,23 @@ platform-audit 监听器异步落库）；P3 Task 2 起 filter 侧发布缺省�
   响应时间不可枚举用户名，见 `AuthService#constantTimeVerified`）；**改密吊销**（见事件表
   `UserPasswordChanged` 行）。
 
+### 菜单合一模型（auth_permission 即菜单字典，web 基座 Task 1）
+
+- **合一形态**：菜单=带路由元数据的权限点——`auth_permission` 单表直接承载菜单树（不建新表/不加
+  绑定表）：`parent_id` 组树，`path/component/icon/sort/visible` 为前端路由元数据；`type` 四值
+  DIR/MENU/BUTTON/API。**MENU 的 code 即权限码**（鉴权与菜单可见性同源，一码两用）。
+- **可见性规则**（`PermissionService.visibleMenus`，契约 `MenuQueryService` 对 identity 暴露）：
+  仅 MENU 型按 `code ∈ authorities` 过滤；**DIR 不参与鉴权**——由后代可见性决定（自底向上补全
+  祖先链，空 DIR 折叠不返回）；BUTTON/API 永不进可见菜单树（admin 字典树 `tree()` 全量含，供
+  字典管理）。`visible` 列仅是前端展示开关（隐藏但路由可注册），后端不据此过滤。
+- **PLATFORM 超级**：authorities 含 `PLATFORM`（admin 端平台 token grant=[PLATFORM]）→ 全 MENU
+  可见——与 identity `AuthService.PLATFORM_AUTHORITY`、security-starter 链级
+  `hasAuthority("PLATFORM")` 及前端 `v-permission` 常量四处同规则同值。
+- **token 快照语义**：`GET /app-api/auth/menus` 直取 `ForgeAuthentication.getAuthorities()`（登录时
+  冻结进 TokenGrant 的权限集）——**不经 `UserPermissionsQuery` 重查**，菜单面与权限门禁同一快照
+  口径（授权变更后重登生效，既有 token 冻结至过期/登出）。契约经 ObjectProvider 装配：
+  service-authorization 未在场时 identity 缺省空菜单列表（照 2b UserPermissionsQuery 先例）。
+
 ### OSIV：建议关闭
 
 判别式租户在 **Hibernate 会话开启时**解析——OSIV（Boot 默认开）的请求级会话在租户上下文填充

@@ -1,7 +1,7 @@
 # forge-service-authorization
 
-授权服务：**角色 / 权限点 / 用户角色分配 / 数据权限（dataScope） + 权限快照缓存 + 租户开通初始化**
-（服务=自动配置库形态，照抄 `forge-service-tenant` 范式样板）。
+授权服务：**角色 / 权限点（含菜单合一字典树）/ 用户角色分配 / 数据权限（dataScope） + 权限快照缓存
++ 租户开通初始化 + 可见菜单查询**（服务=自动配置库形态，照抄 `forge-service-tenant` 范式样板）。
 
 ## 模块形态（同 service-tenant 样板）
 
@@ -18,23 +18,41 @@
   `@EnableJpaRepositories(domain)`；无 `@Bean`。**@EnableMethodSecurity 不在此**（Task 4 裁定归属
   forge-security-starter）。双路径装配（imports 文件 + 消费方 @Import）均已集成实证。
 - **包布局**：`domain/`（实体+仓库+枚举）· `app/`（RoleService/UserRoleService/PermissionService/
-  UserPermissionsQueryImpl/TenantInitializationService/TenantCreatedListener + DTO）·
-  `controller/app/`、`controller/admin/`（双端前缀路由）。
+  UserPermissionsQueryImpl/TenantInitializationService/TenantCreatedListener + DTO）· 模块根包
+  （自动配置 + 契约实现 `MenuQueryServiceImpl`）· `controller/app/`、`controller/admin/`
+  （双端前缀路由）。
 - **Flyway**：`V202611181300__create_auth_tables.sql` 随 jar 走——四表 + partial unique indexes +
   **权限点字典 seed**（固定 id）：user:manage/role:manage/org:manage + mold:create/mold:read/
-  mold:repair/maint:read（均 API 型）。
+  mold:repair/maint:read（均 API 型）；`V202611190000__alter_permission_menu.sql`（菜单切片）——
+  auth_permission +parent_id/path/component/icon/sort/visible 六列 + **菜单树 seed**（dashboard/
+  sys-dir/tenant:manage；role:manage 经 UPDATE 转 MENU 挂 sys-dir，component 与 Task 4 页面文件
+  一一对应）。
 
 ## 表结构
 
 | 表 | 形态 | 唯一性（partial, WHERE deleted = FALSE） |
 |---|---|---|
 | `auth_role` | 租户表 | (tenant_id, code) |
-| `auth_permission` | **全局表** | code（字典全租户共享——平台级领域语言） |
+| `auth_permission` | **全局表**（含菜单树+路由元数据） | code（字典全租户共享——平台级领域语言） |
 | `auth_role_permission` | 租户表 | (tenant_id, role_id, permission_id) |
 | `auth_user_role` | 租户表 | (tenant_id, user_id, role_id) |
 
 roleId/permissionId/userId 均为**逻辑引用**（无物理 FK：跨域不耦合，软删/字典清理侧重绑）。
 permission 软删后的悬挂授权在查询侧自然失效（`findAuthorityCodes` 经字典存活行 join）。
+
+### 菜单合一模型（auth_permission 即菜单字典）
+
+- 菜单=带路由元数据的权限点：`parent_id` 组树、`path/component/icon/sort/visible` 路由元数据、
+  `type` 四值 **DIR/MENU/BUTTON/API**；MENU 的 code 即权限码（鉴权与可见性同源）；DIR 不参与
+  鉴权（可见性由后代决定）；`visible` 是前端展示开关（后端不据此过滤）。
+- **可见菜单树**（`visibleMenus`，契约 `MenuQueryService` 供 identity `/menus` 消费）：MENU 按
+  code∈authorities 过滤（`PLATFORM` 超级全通过）→ DIR 祖先链自底向上补全（空 DIR 折叠）→
+  children 按 sort 升序（null 最后，同序按 code 定序）。BUTTON/API 不进可见树。
+- **admin 字典树**（`tree()`）：全量含 BUTTON/API 与空 DIR（字典管理须见全部行）。
+- **约定（service 不强校验，记录在此）**：type=DIR 时路由字段（path/component）可不填——渲染层
+  约定；create 的 visible 缺省 TRUE（对齐列 DEFAULT TRUE）；update 部分更新 null 不改，
+  **parentId 传空串=挂根**；parentId 环数据由可见性算法防御（上溯 walked 集），字典侧不阻止
+  写入（无引用校验，同 delete 悬挂引用语义）。
 
 ## 权限快照缓存（UserPermissionsQueryImpl）
 
@@ -65,7 +83,11 @@ permission 软删后的悬挂授权在查询侧自然失效（`findAuthorityCode
   /DELETE {id} + **PUT {id}/permissions**（全量替换授权，空集=回收）+ **PUT {id}/data-scope**
 - `/app-api/users/{userId}/roles`（同上门禁——角色分配属授权管理面）：PUT（全量替换，空集=回收）/GET
 - `/admin-api/permissions`（无 @PreAuthorize——平台 token grant 恒空权限集，门禁=authenticated）：
-  POST/GET/GET {id}/PUT {id}（code 不可改）/DELETE {id}
+  POST/GET/GET {id}/PUT {id}（code 不可改）/DELETE {id}。**GET 列表默认树形**（菜单切片 Task 1）：
+  返回 `tree()` 全量字典树（含 BUTTON/API 与空 DIR，节点=契约 `MenuNodeDTO`）；create/update 请求
+  携带六列菜单元数据（均可空——DIR 路由字段可不填，约定见上节）。
+- 可见菜单树不在本面：租户侧 `GET /app-api/auth/menus`（identity 经契约 `MenuQueryService` +
+  ObjectProvider 消费，token 快照 authorities 直取）。
 
 ## 错误码（FOREIGN_CODES：未加新码）
 
@@ -80,3 +102,8 @@ permission 软删后的悬挂授权在查询侧自然失效（`findAuthorityCode
 证据**（①原始键落盘 ②直接删库行后 TTL 内仍读快照=命中不触库 ③assignPermissions/换绑角色后即时反映）
 + 事件 RolePermissionsChanged；TenantCreated 异步建角（两租户互不可见 + 重投幂等）；同 userId 双租户
 快照物理隔离（`t:` 前缀原始键共存、单侧失效不串味）；契约 bean 暴露——全绿。
+
+`MenuVisibilityIntegrationTest`（独立分支包 `...forge.authorization.menu`，菜单切片 Task 1）：
+visibleMenus **五语义**（authorities 过滤/PLATFORM 超级全量/空 DIR 折叠/祖先 DIR 链补全/sort 升序
+null 最后）+ admin 字典树全量含 BUTTON/API + 六新列读写往返 + 契约 `MenuQueryService` bean 暴露——
+全绿。

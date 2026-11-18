@@ -57,7 +57,8 @@ authorization 的权限快照缓存），连接走 Boot 缺省 `localhost:6379`�
 
 > **权限快照语义**：权限集在登录时冻结进 TokenGrant——给角色加/减权限后**旧 token 不变**
 > （越权依旧 403），**重新登录**即取新集（authorization 侧快照缓存已被写路径显式 evict）。
-> token 内权限刷新机制属 Phase 3。双租户互不可见、登出吊销、审计落表、org 面门禁等九场景验收见
+> token 内权限刷新机制属 Phase 3。双租户互不可见、登出吊销、审计落表、org 面门禁、ADMIN
+> `/app-api/auth/menus` 全量菜单树（菜单切片 Task 1，快照 authorities 直取）等十场景验收见
 > `DemoAuthFlowIntegrationTest`（Testcontainers 真实 PG/Redis 全 HTTP 链）。
 
 > **OSIV 关闭**（application.yaml `spring.jpa.open-in-view=false`）：OSIV 请求级会话在租户上下文
