@@ -188,6 +188,66 @@ class TenantServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(reloaded.get().getCreatedAt()).isNotNull();
     }
 
+    /**
+     * 全量列表（GET /admin-api/tenants，Task 4 后端补齐）：全局表无租户语义——任意视角同一行集；
+     * 按 code 升序稳定输出（前端全量列表前端过滤，顺序稳定=分页/快照可比）。
+     * 本测试以 demo seed 同款两租户（t-mfg/t-mold）作 contained 断言（类内共享库，只验在场+有序）。
+     */
+    @Test
+    void listReturnsAllTenantsStablySortedByCode() {
+        TenantDTO mfg = tenantService.create("t-mfg", "精密制造", null, null);
+        TenantDTO mold = tenantService.create("t-mold", "模具车间", null, null);
+
+        List<TenantDTO> all = TenantTestSupport.runAsResult("list-viewer", tenantService::list);
+
+        assertThat(all).extracting(TenantDTO::id).contains(mfg.id(), mold.id());
+        assertThat(all).extracting(TenantDTO::id).contains(mold.id(), mfg.id());
+        // 整表按 code 升序（稳定序：排序键唯一——code 活跃行唯一）
+        List<String> codes = all.stream().map(TenantDTO::code).toList();
+        assertThat(codes).isSorted();
+        assertThat(codes.stream().distinct().count()).isEqualTo(codes.size());
+    }
+
+    /**
+     * 软删除（DELETE /admin-api/tenants/{id}，Task 4 后端补齐）：删后 findById/findByCode 均
+     * TENANT-0404（软删行被 Hibernate @SoftDelete 过滤）；编码可复用（partial unique index 语义）；
+     * 删除发布 TenantDisabled（复用停用事件——语义="租户不可用"，存量 token 即时下线，README 登记）；
+     * 不存在（含已删）→ TENANT-0404（幂等静默会掩盖管理端误操作，取显式 404）。
+     */
+    @Test
+    void deleteSoftDeletesPublishesOfflineEventAndCodeBecomesReusable() {
+        TenantDTO created = tenantService.create("doomed-corp", "待删公司", null, null);
+        assertThat(disabledEvents(created.id())).isEmpty();
+
+        tenantService.delete(created.id());
+
+        assertThatThrownBy(() -> tenantService.findById(created.id()))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> {
+                    assertThat(((BusinessException) ex).errorCode())
+                            .isEqualTo(TenantErrorCodes.TENANT_NOT_FOUND);
+                    assertThat(((BusinessException) ex).httpStatus()).isEqualTo(404);
+                });
+        assertThatThrownBy(() -> tenantService.findByCode("doomed-corp"))
+                .isInstanceOf(BusinessException.class);
+        assertThat(tenantQueryService.findByCode("doomed-corp")).isEmpty();
+
+        // 删除即下线：TenantDisabled 事件恰好一次（security-starter TenantDisabledListener
+        // 吊销该租户全部存量 token——删除的租户其会话不可信，与停用同向）
+        assertThat(disabledEvents(created.id())).hasSize(1);
+
+        // 编码可复用（软删行不占码）：同码重建得新 id；再次删除旧 id → 404（已删即不存在）
+        TenantDTO reborn = tenantService.create("doomed-corp", "重生公司", null, null);
+        assertThat(reborn.id()).isNotEqualTo(created.id());
+        assertThat(tenantService.findByCode("doomed-corp").name()).isEqualTo("重生公司");
+        assertThatThrownBy(() -> tenantService.delete(created.id()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining(created.id());
+        // 复活后的新行未受旧 id 删除影响；事件计数不变（针对旧 tenantId）
+        assertThat(disabledEvents(created.id())).hasSize(1);
+        assertThat(disabledEvents(reborn.id())).isEmpty();
+    }
+
     @Test
     void updateAssignsPackageAndPackageCrudSoftDeletes() {
         var pkg = tenantPackageService.create("starter-pkg", "初创套餐", 10, "基础套餐");

@@ -29,6 +29,13 @@
 - **状态机**：创建即 `INIT`（enable 显式开通）→ `ENABLED` ↔ `DISABLED`。
   - `disable` **幂等**：已 DISABLED 返回当前状态、**不重复发** `TenantDisabled` 事件（按事件触发的下游清理不放大）。
   - `enable` 幂等：任意状态 → ENABLED。
+- **list 全量**（Task 4 管理端补齐）：全局表无租户语义——任意视角同一行集；code 升序稳定输出，
+  数据量级=租户数，全量直出不分页（前端过滤）。
+- **delete 软删**（Task 4 管理端补齐）：行留存（类级 @SoftDelete），`findByCode`/`findById` 随之不可见、
+  **编码可复用**（partial unique index 语义）；不存在（含已删）→ `TENANT-0404`（显式报缺而非幂等静默——
+  幂等会掩盖管理端对已删行的重复误操作）；**删除亦发布 `TenantDisabled`**（复用停用事件——事件语义=
+  "租户不可用"，security-starter 即时吊销该租户全部存量 token；已 DISABLED 再删不重复发，与 disable
+  幂等口径一致）。
 - **update 部分更新**：null 字段不改（name/packageId/expiredAt；套餐同理）。
 - **package_id 无物理 FK**：套餐可先行软删、租户侧重绑；本任务不做套餐存在性校验（无专属错误码段，见下）。
 - **事件**（ApplicationEventPublisher，业务事务内发布，spec §10）：`TenantCreated`（create 时）、
@@ -44,8 +51,9 @@
 
 ## 接口（实际路径含 /admin-api 前缀）
 
-- `POST /tenants`、`GET /tenants/{id}`、`GET /tenants?code=`、`PUT /tenants/{id}`、
-  `POST /tenants/{id}/disable`、`POST /tenants/{id}/enable` → `Result<TenantDTO>`
+- `POST /tenants`、`GET /tenants`（全量列表，code 升序）、`GET /tenants/{id}`、`GET /tenants?code=`、
+  `PUT /tenants/{id}`、`POST /tenants/{id}/disable`、`POST /tenants/{id}/enable`、
+  `DELETE /tenants/{id}`（软删）→ `Result<TenantDTO>`（delete 为 `Result<Void>`）
 - `POST /tenant-packages`、`GET /tenant-packages/{id}`、`GET /tenant-packages?code=`、
   `PUT /tenant-packages/{id}`、`DELETE /tenant-packages/{id}`（软删）→ `Result<TenantPackageDTO>`
 - 契约查询 bean：`TenantQueryService`（findById/findByCode → `Optional<TenantDTO>`，跨模块同步消费）

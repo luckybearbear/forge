@@ -1,5 +1,6 @@
 package io.github.luckybearbear.forge.service.tenant.domain;
 
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -7,4 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface TenantRepository extends JpaRepository<TenantEntity, String> {
 
     Optional<TenantEntity> findByCode(String code);
+
+    /** 全量列表（code 升序——排序键在活跃行上唯一，输出稳定；管理端全量下拉/表格用）。 */
+    List<TenantEntity> findAllByOrderByCodeAsc();
 }

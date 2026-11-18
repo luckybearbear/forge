@@ -9,19 +9,22 @@ import io.github.luckybearbear.forge.service.tenant.domain.TenantEntity;
 import io.github.luckybearbear.forge.service.tenant.domain.TenantRepository;
 import io.github.luckybearbear.forge.service.tenant.domain.TenantStatus;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 租户应用服务：create/findByCode/findById/update/disable/enable。
+ * 租户应用服务：create/findByCode/findById/list/update/disable/enable/delete。
  *
  * <p>事件发布经 {@link ApplicationEventPublisher} 且在业务事务内（spec §10：event_publication
  * 登记随业务事务原子提交）。tenant 域为全局表（无租户上下文），事件 payload 的 tenantId 是
  * <b>事件主体租户</b>而非 TTL 上下文回填字段（契约 javadoc 约定）。
  *
  * <p>语义约定（README 同步登记）：创建即 INIT（enable 显式开通）；disable 幂等（已 DISABLED 返回
- * 当前状态、不重复发事件）；enable 幂等（任意状态→ENABLED）；update 为部分更新（null 字段不改）。
+ * 当前状态、不重复发事件）；enable 幂等（任意状态→ENABLED）；update 为部分更新（null 字段不改）；
+ * list 全量按 code 升序（管理端全量列表，前端过滤）；delete 软删且<b>删除亦发 TenantDisabled</b>
+ * （语义="租户不可用"——存量 token 即时下线；不存在[含已删]→TENANT-0404）。
  */
 @Service
 public class TenantService {
@@ -92,6 +95,34 @@ public class TenantService {
         TenantEntity entity = requireTenant(id);
         entity.setStatus(TenantStatus.ENABLED);
         return toDto(entity);
+    }
+
+    /**
+     * 全量列表（code 升序，Task 4 管理端补齐）：全局表无租户语义——任意视角同一行集；
+     * 软删行由 Hibernate 类级 @SoftDelete 自动排除。数据量级=租户数（百~千），全量直出不分页。
+     */
+    @Transactional(readOnly = true)
+    public List<TenantDTO> list() {
+        return repository.findAllByOrderByCodeAsc().stream().map(this::toDto).toList();
+    }
+
+    /**
+     * 软删除（Task 4 管理端补齐）：不存在（含已删）→ TENANT-0404/404（显式报缺而非幂等静默——
+     * 幂等语义会掩盖管理端对已删行的重复误操作）；删后 findByCode 不可见、编码可复用
+     * （partial unique index WHERE deleted = FALSE）。
+     *
+     * <p><b>删除亦发布 {@link TenantDisabled}</b>（复用停用事件）：事件语义="租户不可用"——
+     * security-starter 的 TenantDisabledListener 即时吊销该租户全部存量 token，删除的租户
+     * 其会话同样不可信（README 登记）。已 DISABLED 租户再删除不重复发（停用时已吊销过，
+     * 与 disable 幂等口径一致——不放大吊销动作）。
+     */
+    @Transactional
+    public void delete(String id) {
+        TenantEntity entity = requireTenant(id);
+        if (entity.getStatus() != TenantStatus.DISABLED) {
+            eventPublisher.publishEvent(new TenantDisabled(entity.getId(), Instant.now()));
+        }
+        repository.deleteById(id); // 类级 @SoftDelete → UPDATE deleted=true，行留存审计可溯
     }
 
     private TenantEntity requireTenant(String id) {
