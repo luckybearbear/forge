@@ -13,6 +13,7 @@ import io.github.luckybearbear.forge.platform.security.token.TokenGrant;
 import io.github.luckybearbear.forge.platform.test.AbstractIntegrationTest;
 import io.github.luckybearbear.forge.service.identity.IdentityServiceAutoConfiguration;
 import io.github.luckybearbear.forge.service.identity.app.AuthService;
+import io.github.luckybearbear.forge.service.identity.controller.admin.AuthAdminController;
 import io.github.luckybearbear.forge.service.identity.controller.app.AuthAppController;
 import java.time.Duration;
 import java.time.Instant;
@@ -39,6 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ForgeAuthentication（登录时冻结进 TokenGrant 的权限集）传给契约 {@link MenuQueryService}，
  * <b>不经 UserPermissionsQuery 重查</b>（在场桩返回 ghost:authority 且零调用——菜单面与权限门禁
  * 同一快照口径，授权变更后重登生效）。两态：stub PLATFORM → 全量；stub 受限 → 过滤。
+ * admin 镜像（Task 2 review Important-1）：AuthAdminController 的 /admin-api/auth/menus 同实现
+ * ——平台 token（authorities=[PLATFORM]，tenantId=null）→ 全 MENU 树。
  * 契约缺省态（ObjectProvider 空列表 → 空菜单）在 IdentityServiceIntegrationTest（其上下文无
  * MenuQueryService bean）。
  *
@@ -115,6 +118,7 @@ class IdentityMenusEndpointTest extends AbstractIntegrationTest {
     }
 
     @Autowired AuthAppController authAppController;
+    @Autowired AuthAdminController authAdminController;
     @Autowired StubMenuQueryService menus;
     @Autowired StubPermissionsQuery permissionsQuery;
 
@@ -137,6 +141,34 @@ class IdentityMenusEndpointTest extends AbstractIntegrationTest {
 
         assertThat(flattenCodes(result.data())).containsExactly("dashboard");
         assertThat(menus.received.getLast()).containsExactly("dashboard");
+        assertThat(permissionsQuery.calls.get()).isZero();
+    }
+
+    /**
+     * admin 镜像端点（/admin-api/auth/menus，Task 2 review Important-1）：平台 token 语义
+     * （grant.tenantId=null、USER_TYPE_PLATFORM、authorities=[PLATFORM]——adminLogin 冻结形状）
+     * → 快照直传 + 全 MENU 树；与 app 面同走 UserPermissionsQuery 零调用口径。
+     */
+    @Test
+    void adminMenusMirrorYieldsFullMenuTreeForPlatformToken() {
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(ForgeAuthentication.of(
+                new StoredToken("raw-admin-menu-token",
+                        new TokenGrant("u-admin-menus", null, AuthService.USER_TYPE_PLATFORM,
+                                Set.of(AuthorizationConstants.PLATFORM_AUTHORITY)),
+                        Instant.now().plus(Duration.ofMinutes(5))),
+                "raw-admin-menu-token"));
+        SecurityContextHolder.setContext(context);
+        Result<List<MenuNodeDTO>> result;
+        try {
+            result = authAdminController.menus();
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertThat(flattenCodes(result.data()))
+                .containsExactlyInAnyOrder("dashboard", "sys-dir", "tenant:manage");
+        assertThat(menus.received.getLast()).containsExactly("PLATFORM");
         assertThat(permissionsQuery.calls.get()).isZero();
     }
 

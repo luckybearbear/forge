@@ -5,6 +5,7 @@
   "description": "Forge web 共享层：Result 语义 axios 封装（401 直跳/无 refresh token）/web-storage-cache 存储封装/后端同构 DTO 类型——web 系复用",
   "exports": {
     "types": "./dist/index.d.ts",
+    "development": "./src/index.ts",
     "import": "./dist/index.js"
   },
   "files": [

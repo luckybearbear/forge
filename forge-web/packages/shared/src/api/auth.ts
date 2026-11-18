@@ -25,7 +25,11 @@ export function changePassword(data: ChangePasswordRequest): Promise<void> {
   return put('/auth/password', data);
 }
 
-/** 登录用户可见菜单树（token 快照语义：authorities ∩ MENU + 祖先 DIR 链）。 */
+/**
+ * 登录用户可见菜单树（token 快照语义：authorities ∩ MENU + 祖先 DIR 链）。
+ * /auth/menus 在后端 admin/app **双面同路径**（AuthAdminController 与 AuthAppController 同实现
+ * 镜像——review Important-1）：admin 端解析为 /admin-api/auth/menus（vite 代理转发此前缀）。
+ */
 export function getMenus(): Promise<MenuNode[]> {
   return get('/auth/menus');
 }
