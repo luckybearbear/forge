@@ -47,9 +47,10 @@ async function handleSubmit(): Promise<void> {
     setAccessToken(res.token, res.expiresAt);
     if (form.remember) setRememberedUsername(form.username);
     else clearRememberedUsername();
-    // redirect 回放：仅接受站内路径（防外链注入），缺省仪表盘
+    // redirect 回放：仅接受站内路径（'/' 开头且非 '//' 协议相对——防外链注入），缺省仪表盘
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '';
-    await router.push(redirect.startsWith('/') ? redirect : '/dashboard');
+    const safeRedirect = redirect.startsWith('/') && !redirect.startsWith('//');
+    await router.push(safeRedirect ? redirect : '/dashboard');
   } catch {
     /* 失败 toast 由 shared 拦截器统一弹（业务码失败不按码分支） */
   } finally {

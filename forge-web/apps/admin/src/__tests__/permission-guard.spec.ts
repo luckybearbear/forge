@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { createRouter, createWebHistory } from 'vue-router';
 import type { RouteLocationNormalized, Router } from 'vue-router';
+import { defineComponent, h } from 'vue';
 
 import { getAccessToken, getMe, getMenus, setAccessToken } from '@forge/web-shared';
 import type { MeResponse, MenuNode } from '@forge/web-shared';
 
-import { permissionGuard } from '@/router/permission';
+import { permissionGuard, setupPermissionGuard } from '@/router/permission';
 import { usePermissionStore } from '@/store/permission';
 import { useUserStore } from '@/store/user';
 
@@ -35,11 +37,30 @@ const dashboardMenu: MenuNode = {
   children: null,
 };
 
-const fakeTo = (path: string, fullPath = path): RouteLocationNormalized =>
-  ({ path, fullPath }) as unknown as RouteLocationNormalized;
+/**
+ * 首轮真实形状：装配前任何未注册路径必命中具名 catch-all（name:'NotFound'+params.pathMatch）
+ * ——Critical #1 的形状钉子（守卫重放不得回显 name/params）。已装配会话可覆写为解析后形状。
+ */
+const fakeTo = (
+  path: string,
+  fullPath = path,
+  over: Partial<RouteLocationNormalized> = {},
+): RouteLocationNormalized =>
+  ({
+    path,
+    fullPath,
+    name: 'NotFound',
+    params: { pathMatch: path.slice(1).split('/') },
+    query: {},
+    hash: '',
+    ...over,
+  }) as unknown as RouteLocationNormalized;
 
 const makeRouter = (): Router & { addRoute: ReturnType<typeof vi.fn> } =>
   ({ addRoute: vi.fn() }) as unknown as Router & { addRoute: ReturnType<typeof vi.fn> };
+
+/** 集成测试桩组件（单组件复用两路由——身份无关，且规避 one-component-per-file 告警）。 */
+const RouteStub = defineComponent({ name: 'RouteStub', render: () => h('div') });
 
 describe('permissionGuard（路由守卫三分支）', () => {
   beforeEach(() => {
@@ -64,12 +85,12 @@ describe('permissionGuard（路由守卫三分支）', () => {
     expect(getMe).not.toHaveBeenCalled();
   });
 
-  it('有 token 未加载：装配 /me+/menus → addRoute 挂载 → {...to, replace:true} 重放', async () => {
+  it('有 token 未加载：装配 /me+/menus → addRoute 挂载 → 按 path 重建位置重放（不回显 name/params）', async () => {
     setAccessToken('t');
     vi.mocked(getMe).mockResolvedValue(meOf(['tenant:manage']));
     vi.mocked(getMenus).mockResolvedValue([dashboardMenu]);
     const router = makeRouter();
-    const to = fakeTo('/dashboard');
+    const to = fakeTo('/dashboard'); // 首轮形状：name:'NotFound'+params.pathMatch
 
     const result = await permissionGuard(to, router);
 
@@ -77,30 +98,33 @@ describe('permissionGuard（路由守卫三分支）', () => {
     expect(getMenus).toHaveBeenCalledTimes(1);
     expect(useUserStore().authorities).toEqual(['tenant:manage']);
     expect(usePermissionStore().menus).toEqual([dashboardMenu]);
-    // addRoute 循环：仪表盘包装层 + 404 兜底
+    // addRoute 循环（装配 promise 内）：仪表盘包装层 + 404 兜底
     expect(router.addRoute).toHaveBeenCalledTimes(2);
     expect(router.addRoute).toHaveBeenLastCalledWith(
       expect.objectContaining({ path: '/:pathMatch(.*)*' }),
     );
-    expect(result).toEqual({ ...to, replace: true });
+    // 重放按 path 重建——若回显 name:'NotFound'，vue-router resolve 的 name 分支优先于 path，回落 404
+    expect(result).toEqual({ path: '/dashboard', query: {}, hash: '', replace: true });
   });
 
-  it('有 token 未加载：并发导航去重（模块级 promise 只发一轮装配）', async () => {
+  it('有 token 未加载：并发导航去重（一轮装配，addRoute 也只执行一次）', async () => {
     setAccessToken('t');
     let resolveMe!: (me: MeResponse) => void;
     vi.mocked(getMe).mockImplementation(
       () => new Promise<MeResponse>((resolve) => (resolveMe = resolve)),
     );
     vi.mocked(getMenus).mockResolvedValue([]);
+    const router = makeRouter(); // 并发导航共享同一 router 实例（真实运行时即如此）
     const to = fakeTo('/dashboard');
-    const first = permissionGuard(to, makeRouter());
-    const second = permissionGuard(to, makeRouter());
+    const first = permissionGuard(to, router);
+    const second = permissionGuard(to, router);
     resolveMe(meOf([]));
     const [r1, r2] = await Promise.all([first, second]);
 
     expect(getMe).toHaveBeenCalledTimes(1);
-    expect(r1).toEqual({ ...to, replace: true });
-    expect(r2).toEqual({ ...to, replace: true });
+    expect(router.addRoute).toHaveBeenCalledTimes(1); // 空菜单 → 仅 404 兜底一条，且只挂载一次
+    expect(r1).toEqual({ path: '/dashboard', query: {}, hash: '', replace: true });
+    expect(r2).toEqual({ path: '/dashboard', query: {}, hash: '', replace: true });
   });
 
   it('有 token 未加载：装配失败 → 清内存态+清 token → 跳登录（携 redirect）', async () => {
@@ -118,5 +142,32 @@ describe('permissionGuard（路由守卫三分支）', () => {
     setAccessToken('t');
     useUserStore().loaded = true;
     expect(await permissionGuard(fakeTo('/login'), makeRouter())).toEqual({ path: '/dashboard' });
+  });
+
+  it('真实 router 集成：深链（含 query）装配后命中动态路由而非 404（name 优先陷阱回归钉子）', async () => {
+    // 装配前 '/dashboard' 必命中具名 catch-all（name:'NotFound'+params.pathMatch）——守卫重放
+    // 若按 name 解析会回落 404、动态路由永不被使用；必须按 path 重解析且 query 保留。
+    setAccessToken('t');
+    vi.mocked(getMe).mockResolvedValue(meOf(['dashboard']));
+    vi.mocked(getMenus).mockResolvedValue([
+      { ...dashboardMenu, component: 'login/index' }, // 占位已存在视图（懒加载，不渲染）
+    ]);
+
+    const router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        { path: '/login', name: 'Login', component: RouteStub },
+        { path: '/', redirect: '/dashboard' },
+        { path: '/:pathMatch(.*)*', name: 'NotFound', component: RouteStub },
+      ],
+    });
+    setupPermissionGuard(router);
+
+    await router.push('/dashboard?tab=2');
+
+    expect(router.currentRoute.value.name).toBe('dashboard'); // 动态叶子（name=菜单 code），非 NotFound
+    expect(router.currentRoute.value.path).toBe('/dashboard');
+    expect(router.currentRoute.value.query.tab).toBe('2'); // query 经重放保留
+    window.history.replaceState({}, '', '/'); // 还原 jsdom URL
   });
 });
