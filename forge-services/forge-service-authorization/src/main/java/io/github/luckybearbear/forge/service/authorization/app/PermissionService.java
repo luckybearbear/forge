@@ -1,5 +1,6 @@
 package io.github.luckybearbear.forge.service.authorization.app;
 
+import io.github.luckybearbear.forge.contract.authorization.AuthorizationConstants;
 import io.github.luckybearbear.forge.contract.authorization.AuthorizationErrorCodes;
 import io.github.luckybearbear.forge.contract.authorization.MenuNodeDTO;
 import io.github.luckybearbear.forge.platform.core.BusinessException;
@@ -34,20 +35,14 @@ import org.springframework.transaction.annotation.Transactional;
  * 授权查询侧自然失效（findAuthorityCodes 经 permission 存活行 join）；租户侧重授权时引用新字典行。
  *
  * <p><b>菜单合一模型（Task 1）</b>：菜单=带路由元数据的权限点。visibleMenus 可见性规则：
- * MENU 按 code∈authorities 过滤（{@link #PLATFORM_AUTHORITY} 超级全通过）；DIR 不参与鉴权，
- * 由后代可见性决定（祖先链自底向上补全，空 DIR 折叠不返回）；BUTTON/API 永不进可见菜单树。
- * tree() 为 admin 字典树：全量含 BUTTON/API（含空 DIR——字典管理需见全部行）。
- * type=DIR 时路由字段可不填——service 不强校验（渲染层约定，见模块 README）。
+ * MENU 按 code∈authorities 过滤（{@link AuthorizationConstants#PLATFORM_AUTHORITY} 超级全通过）；
+ * DIR 不参与鉴权，由后代可见性决定（祖先链自底向上补全且<b>只认 DIR</b>——未授权 MENU/
+ * API/BUTTON 作父不入集，悬挂/软删父下已授权子树提升为根不蒸发；空 DIR 折叠不返回）；
+ * BUTTON/API 永不进可见菜单树。tree() 为 admin 字典树：全量含 BUTTON/API（含空 DIR——
+ * 字典管理需见全部行）。type=DIR 时路由字段可不填——service 不强校验（渲染层约定，见模块 README）。
  */
 @Service
 public class PermissionService {
-
-    /**
-     * 平台超级 authority：authorities 含之即全 MENU 可见（不逐 code 比对）。与 identity 的
-     * AuthService.PLATFORM_AUTHORITY 同值同规则（admin 端平台 token grant=[PLATFORM]）——
-     * 指令/菜单/链级门禁三处统一常量；前端 v-permission（forge-web Task 3）同规则。
-     */
-    public static final String PLATFORM_AUTHORITY = "PLATFORM";
 
     /** 同级排序：sort 升序（null 最后），同序按 code 定序（稳定可重现）。 */
     private static final Comparator<PermissionEntity> CHILD_ORDER =
@@ -133,10 +128,11 @@ public class PermissionService {
      * 可见菜单树（identity /menus 经契约 {@code MenuQueryService} 消费）：
      * <ol>
      *   <li>rows（字典全量）→ 可见 MENU 集：type=MENU 且（超级或 code∈authorities）</li>
-     *   <li>DIR 链补全（自底向上）：沿 parentId 上溯标记祖先——有可见后代的 DIR 可见；
-     *       空 DIR 天然不在集内（折叠）；环数据防御（walked 集 + 已可见短路）</li>
-     *   <li>树组装：roots=parentId 空/空白（悬挂父按根呈现——数据防御）；children 按
-     *       {@link #CHILD_ORDER} 升序稳定排序</li>
+     *   <li>DIR 链补全（自底向上）：沿 parentId 上溯标记祖先——<b>仅 DIR 型祖先入集</b>（未授权
+     *       MENU/API/BUTTON 作父不入：可见性只认 code 命中的 MENU，链补全永不翻越门禁）；祖先缺失
+     *       （悬挂/软删父）同断。空 DIR 天然不在集内（折叠）；环数据防御（walked 集 + 已可见短路）</li>
+     *   <li>树组装：roots=parentId 空/空白或父不在可见集（未授权 MENU 父/非 DIR 祖先/悬挂软删父 →
+     *       已授权子树提升为根，不随父蒸发）；children 按 {@link #CHILD_ORDER} 升序稳定排序</li>
      *   <li>MenuNodeDTO 递归（DIR 也返回——菜单树渲染需要容器节点）</li>
      * </ol>
      * BUTTON/API 不进可见树；DIR/BUTTON/API 的 code 出现在 authorities 中不产生节点
@@ -145,7 +141,7 @@ public class PermissionService {
     @Transactional(readOnly = true)
     public List<MenuNodeDTO> visibleMenus(Set<String> authorities) {
         List<PermissionEntity> rows = repository.findAll();
-        boolean platform = authorities.contains(PLATFORM_AUTHORITY);
+        boolean platform = authorities.contains(AuthorizationConstants.PLATFORM_AUTHORITY);
 
         Map<String, PermissionEntity> byId = rows.stream()
                 .collect(Collectors.toMap(PermissionEntity::getId, Function.identity()));
@@ -156,11 +152,17 @@ public class PermissionService {
             }
         }
 
-        // DIR 祖先链补全：自每个可见节点上溯；祖先已可见即短路（其链已被此前的上溯补全）
+        // DIR 祖先链补全：自每个可见节点上溯，仅 DIR 型祖先入集（祖先缺失[悬挂/软删父]或非 DIR
+        // [未授权 MENU/API/BUTTON 作父]即断——不入集，其下已授权子树由 assembleTree 提升为根）；
+        // 祖先已可见即短路（其链已被此前的上溯补全）
         for (String id : Set.copyOf(visibleIds)) {
             Set<String> walked = new HashSet<>(); // 环防御（parentId 环不致死循环）
             for (String cursor = parentOf(byId, id); cursor != null && walked.add(cursor);
                     cursor = parentOf(byId, cursor)) {
+                PermissionEntity ancestor = byId.get(cursor);
+                if (ancestor == null || ancestor.getType() != PermissionType.DIR) {
+                    break;
+                }
                 if (!visibleIds.add(cursor)) {
                     break;
                 }
@@ -190,7 +192,8 @@ public class PermissionService {
         return found;
     }
 
-    /** 组装：includedIds 内的行成树——roots=parentId 空/空白或父不在集内（悬挂按根呈现）。 */
+    /** 组装：includedIds 内的行成树——roots=parentId 空/空白或父不在集内（未授权 MENU 父/
+     * 非 DIR 祖先/悬挂软删父：已授权子树提升为根，不随父蒸发）。 */
     private static List<MenuNodeDTO> assembleTree(Map<String, PermissionEntity> byId, Set<String> includedIds) {
         Map<String, List<PermissionEntity>> childrenByParent = new HashMap<>();
         List<PermissionEntity> roots = new ArrayList<>();

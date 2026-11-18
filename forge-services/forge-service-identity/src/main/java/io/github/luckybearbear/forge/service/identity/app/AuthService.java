@@ -1,5 +1,6 @@
 package io.github.luckybearbear.forge.service.identity.app;
 
+import io.github.luckybearbear.forge.contract.authorization.AuthorizationConstants;
 import io.github.luckybearbear.forge.contract.authorization.UserPermissionsQuery;
 import io.github.luckybearbear.forge.contract.identity.UserPasswordChanged;
 import io.github.luckybearbear.forge.contract.tenant.TenantDTO;
@@ -66,9 +67,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  *
  * <p><b>token 语义</b>：app 端 grant=(userId, tenantId, "MEMBER", 权限集)；admin 端
  * grant=(adminId, null, "PLATFORM", [PLATFORM])——tenantId=null 即平台 token（TokenAuthFilter 不填充
- * 租户上下文，2a 行为）；authorities 仅含 {@link #PLATFORM_AUTHORITY}（/admin-api/** 面准入，不含
- * 业务权限点——平台侧细粒度管控属后续演进）。TTL 取 {@code forge.security.token-ttl}（与
- * TokenAuthFilter 滑动续期窗口同源，默认 8h）。
+ * 租户上下文，2a 行为）；authorities 仅含 {@link AuthorizationConstants#PLATFORM_AUTHORITY}
+ * （/admin-api/** 面准入，不含业务权限点——平台侧细粒度管控属后续演进）。TTL 取
+ * {@code forge.security.token-ttl}（与 TokenAuthFilter 滑动续期窗口同源，默认 8h）。
  */
 @Service
 public class AuthService {
@@ -77,11 +78,6 @@ public class AuthService {
     public static final String USER_TYPE_MEMBER = "MEMBER";
     /** admin 端 token 的 userType 标记（平台管理员，无租户）。 */
     public static final String USER_TYPE_PLATFORM = "PLATFORM";
-    /**
-     * 平台 authority（Task 6 评审 Important-2）：admin 登录 grant 携带——security-starter 默认链以
-     * {@code hasAuthority("PLATFORM")} 守 /admin-api/** 面（MEMBER token 403）。仅 admin 端 token 持有。
-     */
-    public static final String PLATFORM_AUTHORITY = "PLATFORM";
 
     /**
      * 恒时比较垫底 hash（Task 4 安全输入 1）：{@code "123456"} 的 bcrypt（{bcrypt} 前缀走
@@ -147,7 +143,8 @@ public class AuthService {
     }
 
     /** admin 端登录：平台管理员（全局表直查）；grant.tenantId=null（平台 token 不填充租户上下文），
-     *  authorities 携带 {@link #PLATFORM_AUTHORITY}（/admin-api/** 面的准入信号，评审 Important-2）。 */
+     *  authorities 携带 {@link AuthorizationConstants#PLATFORM_AUTHORITY}（/admin-api/** 面的准入信号，
+     *  评审 Important-2；常量单源契约化——评审 Minor-1）。 */
     public LoginResponse adminLogin(AdminLoginRequest request) {
         PlatformAdminEntity admin = adminRepository.findByUsername(request.username()).orElse(null);
         if (!constantTimeVerified(admin != null && admin.getStatus() == UserStatus.ENABLED,
@@ -155,7 +152,8 @@ public class AuthService {
             throw BusinessException.of(IdentityErrorCodes.IDENT_BAD_CREDENTIALS);
         }
         StoredToken token = tokenStore.create(
-                new TokenGrant(admin.getId(), null, USER_TYPE_PLATFORM, Set.of(PLATFORM_AUTHORITY)), tokenTtl);
+                new TokenGrant(admin.getId(), null, USER_TYPE_PLATFORM,
+                        Set.of(AuthorizationConstants.PLATFORM_AUTHORITY)), tokenTtl);
         return new LoginResponse(token.token(), token.expiresAt(), admin.getId(), null);
     }
 

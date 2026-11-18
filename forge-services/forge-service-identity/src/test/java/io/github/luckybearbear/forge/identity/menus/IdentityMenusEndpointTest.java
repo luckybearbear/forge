@@ -1,5 +1,6 @@
 package io.github.luckybearbear.forge.identity.menus;
 
+import io.github.luckybearbear.forge.contract.authorization.AuthorizationConstants;
 import io.github.luckybearbear.forge.contract.authorization.MenuNodeDTO;
 import io.github.luckybearbear.forge.contract.authorization.MenuQueryService;
 import io.github.luckybearbear.forge.contract.authorization.UserPermissionsQuery;
@@ -106,7 +107,7 @@ class IdentityMenusEndpointTest extends AbstractIntegrationTest {
         @Override
         public List<MenuNodeDTO> visibleMenus(Set<String> authorities) {
             received.add(Set.copyOf(authorities));
-            if (authorities.contains(AuthService.PLATFORM_AUTHORITY)) {
+            if (authorities.contains(AuthorizationConstants.PLATFORM_AUTHORITY)) {
                 return List.of(menuNode("dashboard"), dirNode());
             }
             return authorities.contains("dashboard") ? List.of(menuNode("dashboard")) : List.of();

@@ -1,5 +1,6 @@
 package io.github.luckybearbear.forge.identity.login;
 
+import io.github.luckybearbear.forge.contract.authorization.AuthorizationConstants;
 import io.github.luckybearbear.forge.contract.identity.IdentityErrorCodes;
 import io.github.luckybearbear.forge.contract.identity.UserCreated;
 import io.github.luckybearbear.forge.contract.identity.UserDTO;
@@ -255,7 +256,7 @@ class IdentityServiceIntegrationTest extends AbstractIntegrationTest {
         assertThat(resolved.get().grant().tenantId()).isNull();
         assertThat(resolved.get().grant().userType()).isEqualTo(AuthService.USER_TYPE_PLATFORM);
         assertThat(resolved.get().grant().authorities())
-                .containsExactly(AuthService.PLATFORM_AUTHORITY);
+                .containsExactly(AuthorizationConstants.PLATFORM_AUTHORITY);
 
         // admin 侧同样不泄露存在性：坏密码/未知管理员同码同文案
         assertThat(catchAdminLogin("admin", "wrong-pass").getMessage())

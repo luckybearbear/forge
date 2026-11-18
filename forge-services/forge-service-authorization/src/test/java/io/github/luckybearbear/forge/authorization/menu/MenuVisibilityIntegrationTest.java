@@ -1,5 +1,6 @@
 package io.github.luckybearbear.forge.authorization.menu;
 
+import io.github.luckybearbear.forge.contract.authorization.AuthorizationConstants;
 import io.github.luckybearbear.forge.contract.authorization.MenuNodeDTO;
 import io.github.luckybearbear.forge.contract.authorization.MenuQueryService;
 import io.github.luckybearbear.forge.platform.test.AbstractIntegrationTest;
@@ -23,7 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 菜单切片（Task 1）容器测试：visibleMenus <b>五语义</b>——①按 authorities 过滤（无权菜单不返回）
  * ②PLATFORM 超级全量 ③空 DIR 折叠 ④祖先 DIR 链补全 ⑤sort 升序排序；外加 admin 字典树
- * {@code tree()} 全量含 BUTTON/API + 六新列读写往返 + 契约 {@link MenuQueryService} bean 暴露。
+ * {@code tree()} 全量含 BUTTON/API + 六新列读写往返 + 契约 {@link MenuQueryService} bean 暴露；
+ * 修复轮边界（评审 Important-1/2）——非 DIR 祖先（未授权 MENU 作父）永不入集、悬挂/软删父下
+ * 已授权子树提升为根不蒸发。
  * seed（V202611190000：dashboard/sys-dir/tenant:manage/role:manage 转 MENU）作全局共享字典在场
  * ——断言一律 contains/doesNotContain（其他行不构成干扰）。
  *
@@ -68,7 +71,8 @@ class MenuVisibilityIntegrationTest extends AbstractIntegrationTest {
     void platformAuthorityGrantsFullMenuVisibility() {
         menu("m-beta-a", null, 5);
 
-        List<MenuNodeDTO> visible = permissionService.visibleMenus(Set.of(PermissionService.PLATFORM_AUTHORITY));
+        List<MenuNodeDTO> visible = permissionService.visibleMenus(
+                Set.of(AuthorizationConstants.PLATFORM_AUTHORITY));
 
         // 新建 + seed 全部 MENU 可见；DIR sys-dir 因后代（tenant:manage/role:manage）可见而补全
         assertThat(flattenCodes(visible))
@@ -135,6 +139,38 @@ class MenuVisibilityIntegrationTest extends AbstractIntegrationTest {
         assertThat(find(visible, "d-delta").children())
                 .extracting(MenuNodeDTO::code)
                 .containsExactly("m-delta-10", "m-delta-20", "m-delta-30", "m-delta-null");
+    }
+
+    // ---- 修复轮边界（评审 Important-1/2）：非 DIR 祖先不入集 + 悬挂/软删父提升为根 ----
+
+    /**
+     * 未授权 MENU 作已授权 MENU 的父：父绝不经链补全入树（门禁不变量——可见性只认 code 命中的
+     * MENU，上溯只认 DIR）；子提升为根呈现，不随父蒸发（ Important-1+2 统一语义）。
+     */
+    @Test
+    void unauthorizedMenuAncestorNeverEntersTreeAndChildPromotesToRoot() {
+        PermissionDTO parent = menu("m-theta-parent", null, 1); // 未授权 MENU（code 不在 authorities）
+        PermissionDTO child = menu("m-theta-child", parent.id(), 2); // 已授权 MENU 挂其下
+
+        List<MenuNodeDTO> visible = permissionService.visibleMenus(Set.of("m-theta-child"));
+
+        assertThat(flattenCodes(visible)).contains("m-theta-child").doesNotContain("m-theta-parent");
+        assertThat(visible).extracting(MenuNodeDTO::code) // 根级呈现（父不在可见集 → 提升为根）
+                .contains("m-theta-child");
+    }
+
+    /** 软删父 DIR（字典清理——设计支持的现实触发）：子菜单以根呈现，不整棵蒸发。 */
+    @Test
+    void softDeletedDirParentPromotesAuthorizedChildToRoot() {
+        PermissionDTO parent = dir("d-theta-dead", null);
+        PermissionDTO child = menu("m-theta-orphan", parent.id(), null);
+
+        permissionService.delete(parent.id()); // 软删 → findAll 不再含父（悬挂 parentId）
+
+        List<MenuNodeDTO> visible = permissionService.visibleMenus(Set.of("m-theta-orphan"));
+
+        assertThat(flattenCodes(visible)).contains("m-theta-orphan").doesNotContain("d-theta-dead");
+        assertThat(visible).extracting(MenuNodeDTO::code).contains("m-theta-orphan"); // 根呈现不消失
     }
 
     // ---- admin 字典树：全量含 BUTTON/API + 新列读写 ----

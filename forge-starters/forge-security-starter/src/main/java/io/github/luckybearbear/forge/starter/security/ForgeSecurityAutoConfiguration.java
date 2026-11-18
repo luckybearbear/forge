@@ -94,6 +94,8 @@ public class ForgeSecurityAutoConfiguration {
                             session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                     .authorizeHttpRequests(authorize -> {
                         properties.permitAll().forEach(path -> authorize.requestMatchers(path).permitAll());
+                        // DSL 字面量无法引用常量：与 contract-authorization 的
+                        // AuthorizationConstants.PLATFORM_AUTHORITY（单源）同值同规则
                         authorize.requestMatchers("/admin-api/**").hasAuthority("PLATFORM");
                         authorize.anyRequest().authenticated();
                     })

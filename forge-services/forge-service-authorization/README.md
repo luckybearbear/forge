@@ -46,13 +46,15 @@ permission 软删后的悬挂授权在查询侧自然失效（`findAuthorityCode
   `type` 四值 **DIR/MENU/BUTTON/API**；MENU 的 code 即权限码（鉴权与可见性同源）；DIR 不参与
   鉴权（可见性由后代决定）；`visible` 是前端展示开关（后端不据此过滤）。
 - **可见菜单树**（`visibleMenus`，契约 `MenuQueryService` 供 identity `/menus` 消费）：MENU 按
-  code∈authorities 过滤（`PLATFORM` 超级全通过）→ DIR 祖先链自底向上补全（空 DIR 折叠）→
-  children 按 sort 升序（null 最后，同序按 code 定序）。BUTTON/API 不进可见树。
+  code∈authorities 过滤（`PLATFORM` 超级全通过）→ DIR 祖先链自底向上补全且**只认 DIR**（未授权
+  MENU/API/BUTTON 作父不入集——链补全不翻越门禁，评审 Important-1）→ children 按 sort 升序
+  （null 最后，同序按 code 定序）。空 DIR 折叠；**悬挂/软删父下已授权子树提升为根**（不随父
+  蒸发，评审 Important-2）。BUTTON/API 不进可见树。
 - **admin 字典树**（`tree()`）：全量含 BUTTON/API 与空 DIR（字典管理须见全部行）。
 - **约定（service 不强校验，记录在此）**：type=DIR 时路由字段（path/component）可不填——渲染层
   约定；create 的 visible 缺省 TRUE（对齐列 DEFAULT TRUE）；update 部分更新 null 不改，
   **parentId 传空串=挂根**；parentId 环数据由可见性算法防御（上溯 walked 集），字典侧不阻止
-  写入（无引用校验，同 delete 悬挂引用语义）。
+  写入（无引用校验，同 delete 悬挂引用语义——悬挂/软删父下两树均按根呈现存活子树）。
 
 ## 权限快照缓存（UserPermissionsQueryImpl）
 
@@ -105,5 +107,6 @@ permission 软删后的悬挂授权在查询侧自然失效（`findAuthorityCode
 
 `MenuVisibilityIntegrationTest`（独立分支包 `...forge.authorization.menu`，菜单切片 Task 1）：
 visibleMenus **五语义**（authorities 过滤/PLATFORM 超级全量/空 DIR 折叠/祖先 DIR 链补全/sort 升序
-null 最后）+ admin 字典树全量含 BUTTON/API + 六新列读写往返 + 契约 `MenuQueryService` bean 暴露——
+null 最后）+ admin 字典树全量含 BUTTON/API + 六新列读写往返 + 契约 `MenuQueryService` bean 暴露
++ 修复轮边界两用例（未授权 MENU 作父不入集且子提升为根 / 软删父 DIR 下子菜单根呈现不消失）——
 全绿。

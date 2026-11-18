@@ -91,11 +91,13 @@ platform-audit 监听器异步落库）；P3 Task 2 起 filter 侧发布缺省�
   DIR/MENU/BUTTON/API。**MENU 的 code 即权限码**（鉴权与菜单可见性同源，一码两用）。
 - **可见性规则**（`PermissionService.visibleMenus`，契约 `MenuQueryService` 对 identity 暴露）：
   仅 MENU 型按 `code ∈ authorities` 过滤；**DIR 不参与鉴权**——由后代可见性决定（自底向上补全
-  祖先链，空 DIR 折叠不返回）；BUTTON/API 永不进可见菜单树（admin 字典树 `tree()` 全量含，供
-  字典管理）。`visible` 列仅是前端展示开关（隐藏但路由可注册），后端不据此过滤。
+  祖先链且**只认 DIR**：未授权 MENU/API/BUTTON 作父不入集——链补全不翻越门禁；悬挂/软删父下
+  已授权子树提升为根不蒸发；空 DIR 折叠不返回）；BUTTON/API 永不进可见菜单树（admin 字典树
+  `tree()` 全量含，供字典管理）。`visible` 列仅是前端展示开关（隐藏但路由可注册），后端不据此过滤。
 - **PLATFORM 超级**：authorities 含 `PLATFORM`（admin 端平台 token grant=[PLATFORM]）→ 全 MENU
-  可见——与 identity `AuthService.PLATFORM_AUTHORITY`、security-starter 链级
-  `hasAuthority("PLATFORM")` 及前端 `v-permission` 常量四处同规则同值。
+  可见——常量**单源**于 contract-authorization `AuthorizationConstants.PLATFORM_AUTHORITY`：
+  identity grant（AuthService）、菜单可见性（PermissionService）、security-starter 链级
+  `hasAuthority("PLATFORM")`（DSL 字面量同源同值）及前端 `v-permission` 同规则。
 - **token 快照语义**：`GET /app-api/auth/menus` 直取 `ForgeAuthentication.getAuthorities()`（登录时
   冻结进 TokenGrant 的权限集）——**不经 `UserPermissionsQuery` 重查**，菜单面与权限门禁同一快照
   口径（授权变更后重登生效，既有 token 冻结至过期/登出）。契约经 ObjectProvider 装配：
