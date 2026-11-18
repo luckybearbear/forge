@@ -33,7 +33,7 @@ src/
 │   └── routerHelper.ts      # 后端菜单树 → 路由：import.meta.glob('../views/**') 映射 component 串；
 │                            #   顶级 MENU 挂 Layout、DIR 挂 ParentView；末尾 404 兜底
 ├── store/
-│   ├── user.ts              # token/用户信息（内存态，不进 localStorage）+ loadMe()
+│   ├── user.ts              # 用户信息（内存态）；token 由 shared cache（localStorage）托管 + loadMe()
 │   └── permission.ts        # menus + generateRoutes() + hasPermission()（PLATFORM 超级）
 ├── directives/permission.ts # v-permission="['tenant:manage']"：任一命中或含 PLATFORM 保留，否则移除节点
 ├── layouts/Layout.vue       # 侧边 el-menu 递归菜单 + 面包屑（route matched）+ 用户下拉（改密/登出）

@@ -27,12 +27,11 @@ web:
     - corepack prepare pnpm@10 --activate
   cache:
     key: forge-pnpm
-    paths: [.pnpm-store]
+    paths: [forge-web/.pnpm-store]
   script:
     - cd forge-web
-    - pnpm config set store-dir .pnpm-store
     - pnpm install --frozen-lockfile
-    - pnpm -r lint
+    - pnpm lint
     - pnpm -r build
     - pnpm -r test
   rules:
