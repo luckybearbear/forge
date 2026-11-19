@@ -90,3 +90,14 @@ Demo（forge-demo-app）连 PostgreSQL 运行，本地基础设施二选一（�
 
 将仓库作为 Maven 项目导入；Annotation Processing 无需配置（本项目不使用 Lombok）。
 Enforcer 要求 IDE 内置 Maven/JDK 同样满足 25。
+
+### IntelliJ IDEA：注册 JDK 25（否则报 "JDK 0 / JDK 7 and newer"）
+
+根 pom 声明 `maven.compiler.release=25`——IDEA 未注册任何 JDK 25 SDK 时，模块 JDK 解析为 "JDK 0" 导致编译报错。修复：
+
+1. `File → Project Structure → SDKs → +`：选 **Add JDK** 指向本机 JDK 25 安装目录（便携版位于 `D:\devloper\soft\jdk-25.0.5+8`，须先在本机存在）；或选 **Download JDK**（Vendor=Eclipse Temurin, Version=25）由 IDEA 自动下载
+2. `Project Settings → Project` → SDK 选该 JDK 25，Language level 留 `SDK default`
+3. `Settings → Build Tools → Maven → Runner` → JRE 选该 JDK 25（Importer 的 JDK 无所谓）
+4. Maven 工具窗 → **Reload All Maven Projects**
+
+前端（forge-web）用 VS Code/WebStorm 皆可——Node 22 便携目录 `D:\devloper\soft\node-v22x`（若用 IDEA 系 IDE 开发前端，将 Node 解释器指向该目录；`node22-env.sh` 供终端用）。
