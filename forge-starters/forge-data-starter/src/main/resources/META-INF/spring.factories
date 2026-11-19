@@ -1,2 +1,2 @@
-org.springframework.boot.env.EnvironmentPostProcessor=\
+org.springframework.boot.EnvironmentPostProcessor=\
   io.github.luckybearbear.forge.starter.data.ForgeDataDefaultsEnvironmentPostProcessor
