@@ -93,7 +93,9 @@ Enforcer 要求 IDE 内置 Maven/JDK 同样满足 25。
 
 ### IntelliJ IDEA：注册 JDK 25（否则报 "JDK 0 / JDK 7 and newer"）
 
-根 pom 声明 `maven.compiler.release=25`——IDEA 未注册任何 JDK 25 SDK 时，模块 JDK 解析为 "JDK 0" 导致编译报错。修复：
+> 完整指南（Windows/Mac × IDEA/VS Code、launch.json/settings.json 模板、高频坑速查表）见 **[ide-setup.md](ide-setup.md)**。
+
+**版本硬门槛：IDEA 2025.2+**（Java 25 语言级别自此支持；2023.x/2024.x 报 "JDK 0"，升级是唯一解法）。2025.2+ 配置：
 
 1. `File → Project Structure → SDKs → +`：选 **Add JDK** 指向本机 JDK 25 安装目录（便携版位于 `D:\devloper\soft\jdk-25.0.5+8`，须先在本机存在）；或选 **Download JDK**（Vendor=Eclipse Temurin, Version=25）由 IDEA 自动下载
 2. `Project Settings → Project` → SDK 选该 JDK 25，Language level 留 `SDK default`
